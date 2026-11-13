@@ -12,9 +12,10 @@ observability_prometheus_retention_size: 0
 observability_loki_retention: 2160h
 # Tempo retention of traces.
 observability_tempo_retention: 720h
-# GPU exporter with gpu_inference: nvidia_smi (nvidia_gpu_exporter, works on
-# WSL2) or dcgm (refused while the DCGM exporter image is unverified in
-# versions.lock.yml).
+# GPU exporter where the lab uses the GPU: nvidia_smi (nvidia_gpu_exporter,
+# works on WSL2) or dcgm (the DCGM exporter instead, on bare metal or a VM
+# with the dcgm_metrics feature; refused elsewhere, and while its image is
+# unverified in versions.lock.yml). Only the chosen exporter runs.
 observability_gpu_exporter: nvidia_smi
 # The active platform's database plan and dashboards (from its rendering);
 # {} without them.

@@ -239,6 +239,9 @@
         nvidia_smi: "{{ '/usr/lib/wsl/lib/nvidia-smi' if pinka_provider == 'wsl2' else 'nvidia-smi' }}"
         # The CUDA version the pinned vLLM image is built on.
         vllm_cuda: "{{ pinka_versions.containers.images.vllm.cuda | string }}"
+        # The GPU exporter observability_gpu_exporter names and its metrics.
+        exporter: "{{ observability_gpu_exporter }}"
+        exporter_metrics: "http://127.0.0.1:{{ pinka_internal_ports.gpu_exporter }}/metrics"
       inference:
         dir: "{{ inference_control_dir }}"
         control_port: "{{ pinka_ports.inference_control | int }}"

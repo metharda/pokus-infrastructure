@@ -886,6 +886,14 @@ Run the project's GPU services (profile gpu-cdi or gpu-runtime after the method 
 - Type: `bool`
 - Default: `false`
 
+### `compose_gpu_profile`
+
+The GPU profile's name before the method (gpu, or dcgm for the observability project's DCGM exporter).
+
+- Type: `str`
+- Choices: `gpu`, `dcgm`
+- Default: `gpu`
+
 ### `compose_log_max_size`
 
 Maximum size of one log file of the local log driver, per lab container.
@@ -1950,7 +1958,7 @@ Tempo retention of traces.
 
 ### `observability_gpu_exporter`
 
-GPU exporter with gpu_inference; dcgm is refused while its image is unverified.
+GPU exporter where the lab uses the GPU, the only one that runs; dcgm (the DCGM exporter) is refused without the dcgm_metrics feature and while its image is unverified.
 
 - Type: `str`
 - Choices: `nvidia_smi`, `dcgm`

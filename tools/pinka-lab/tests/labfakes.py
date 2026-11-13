@@ -64,6 +64,8 @@ LAB: dict[str, Any] = {
         "device_args": ["--device", "nvidia.com/gpu=all"],
         "nvidia_smi": "nvidia-smi",
         "vllm_cuda": "13.0.2",
+        "exporter": "nvidia_smi",
+        "exporter_metrics": "http://127.0.0.1:18726/metrics",
     },
     "vllm": {
         "current": "/etc/pinka/vllm/current.yml",

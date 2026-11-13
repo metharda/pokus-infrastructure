@@ -11,6 +11,10 @@ compose_profiles: []
 # Whether the project's GPU services run (Compose profile gpu-cdi or
 # gpu-runtime, after the method Docker offers, docker role facts.yml).
 compose_gpu: false
+# The GPU profile's name before the method: gpu (gpu-cdi, gpu-runtime), or
+# another set of GPU services of the project (observability: dcgm, the DCGM
+# exporter instead of the nvidia-smi exporter).
+compose_gpu_profile: gpu
 # Log limits and cgroup parent of every lab container, set per service rather
 # than in the Docker daemon.
 compose_log_max_size: "{{ pinka_container_log_max_size }}"

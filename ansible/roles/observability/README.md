@@ -47,10 +47,22 @@ Incus API and the exporters on loopback and nothing listens elsewhere:
   disabled.
 - **node_exporter** (host PID namespace, textfile collector directory
   `/var/lib/pinka/node-exporter`, as `pinka-node-exporter`), **cAdvisor**
-  and, where the lab uses the GPU, the nvidia-smi based **GPU exporter** (as
-  `pinka-gpu-exporter`; Compose profile
-  `gpu-cdi` or `gpu-runtime`, after the method in `/etc/docker/daemon.json`).
-  The DCGM exporter is refused while its image is unverified.
+  and, where the lab uses the GPU, the **GPU exporter**
+  `observability_gpu_exporter` names, and only that one: the nvidia-smi
+  based exporter (`nvidia_smi`; Compose profile `gpu-cdi` or `gpu-runtime`,
+  after the method in `/etc/docker/daemon.json`) or the DCGM exporter
+  (`dcgm`; profile `dcgm-cdi` or `dcgm-runtime`). Both run as
+  `pinka-gpu-exporter` in the container `pinka-gpu-exporter`, with no
+  capabilities, bound to `127.0.0.1` on the `gpu_exporter` port, so
+  Prometheus and the inference control endpoint read whichever runs. The
+  DCGM exporter takes its default counters; without capabilities it
+  collects no profiling metrics. `dcgm` is refused on a host without the
+  `dcgm_metrics` feature (WSL2, no NVIDIA driver loaded; the preflight_gate
+  role stops the play before anything changes) and while its image is
+  unverified, never replaced by the other exporter. The observability
+  project's container of the other exporter or GPU method, left by an
+  earlier choice (or by a lab that no longer uses the GPU), is removed
+  before Compose starts the chosen one under the same name.
 - **cAdvisor runs as root**: its image sets no user, and it reads container
   metadata through Docker's and containerd's sockets and the files of
   Docker's data root, most of them root's. In its view of the host, empty

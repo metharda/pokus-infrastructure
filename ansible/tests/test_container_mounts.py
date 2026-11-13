@@ -229,10 +229,14 @@ def test_the_uid_variables_are_infra_accounts() -> None:
     assert not declares_a_non_root_user(services["cadvisor"], "observability")
 
 
-# Services that are one container in two Compose profiles (a GPU method each).
+# Services that are one container in more Compose profiles than one (a GPU
+# method each; the GPU exporter's container also runs the DCGM exporter, the
+# profile observability_gpu_exporter names, as the same account).
 PROFILE_TWINS = {
     "inference/vllm_runtime": "inference/vllm",
     "observability/gpu_exporter_runtime": "observability/gpu_exporter",
+    "observability/dcgm_exporter": "observability/gpu_exporter",
+    "observability/dcgm_exporter_runtime": "observability/gpu_exporter",
 }
 
 

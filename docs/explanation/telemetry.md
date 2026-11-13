@@ -126,9 +126,23 @@ Sending and querying are separate ways in
   becomes `syslog_identifier`.
 - **Prometheus** also scrapes node_exporter, cAdvisor, the PostgreSQL
   exporter, both collectors, Loki, Tempo, Grafana, Incus (with the
-  metrics-only client certificate) and, with `gpu_inference`, the nvidia-smi
-  GPU exporter and vLLM. Retention is `observability_prometheus_retention`
+  metrics-only client certificate), where the lab uses the GPU the GPU
+  exporter, and with `gpu_inference` vLLM. Retention is `observability_prometheus_retention`
   (90 days by default).
+- **The GPU exporter** is the one `observability_gpu_exporter` names, and
+  only that one runs: the nvidia-smi based exporter (`nvidia_smi`, the
+  default, which also works on WSL2) or NVIDIA's DCGM exporter (`dcgm`, on
+  bare metal or a VM where preflight finds the NVIDIA driver loaded, the
+  `dcgm_metrics` feature). Both run in the container `pinka-gpu-exporter` as
+  the account `pinka-gpu-exporter`, without capabilities, on `127.0.0.1` at
+  the same port, so Prometheus scrapes whichever runs. The DCGM exporter
+  takes its default counters; without capabilities it collects no profiling
+  metrics (`DCGM_FI_PROF_*`). Where the lab uses the GPU, bootstrap refuses
+  `dcgm` on a host without `dcgm_metrics` before it changes anything, rather
+  than running the other exporter, and doctor's `gpu.exporter` check fails when the endpoint serves
+  another exporter's metrics or no GPU's. The **pinka: GPU and vLLM**
+  dashboard reads either exporter's metrics. The DCGM exporter has not yet
+  been run on a GPU host, with the pinned driver or a host's own.
 
 ## Finding a run's data
 

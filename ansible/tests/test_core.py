@@ -393,6 +393,86 @@ def test_compose_config_is_valid(project: str, gpu_method: str, tmp_path: Path) 
     assert ("default" in networks) == (project == "core")
 
 
+@pytest.mark.parametrize("gpu_method", ["cdi", "runtime"])
+@pytest.mark.parametrize("exporter", ["nvidia_smi", "dcgm"])
+def test_only_the_chosen_gpu_exporter_runs(exporter: str, gpu_method: str, tmp_path: Path) -> None:
+    """The exporter observability_gpu_exporter names, at its pinned digest, and no other."""
+    docker = shutil.which("docker")
+    assert docker, "the Docker CLI with the Compose plugin is needed for this test"
+    shutil.copy(INFRA / "compose" / "observability" / "compose.yml", tmp_path / "compose.yml")
+    (include,) = compose_includes()["observability"]
+    variables = compose_vars(
+        "observability",
+        compose_root=str(tmp_path.parent),
+        compose_gpu_method=gpu_method,
+        observability_gpu_exporter=exporter,
+    )
+    extra = {
+        key: evaluate(value.strip("{} "), variables | DEFAULTS)
+        for key, value in include.get("compose_extra_env", {}).items()
+    }
+    # The choice over the role's default.
+    profile = evaluate(include["compose_gpu_profile"].strip("{} "), DEFAULTS | variables)
+    text = render_template(
+        "compose",
+        "env.j2",
+        {
+            **variables,
+            "compose_extra_env": extra,
+            "compose_gpu": True,
+            "compose_gpu_profile": profile,
+            "compose_profiles": [],
+        },
+    )
+    (tmp_path / ".env").write_text(text)
+    result = subprocess.run(
+        [docker, "compose", "--project-directory", str(tmp_path), "config", "--format", "json"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    services = yaml.safe_load(result.stdout)["services"]
+    exporters = {
+        name: service
+        for name, service in services.items()
+        if service.get("container_name") == "pinka-gpu-exporter"
+    }
+    expected = {
+        ("nvidia_smi", "cdi"): "gpu_exporter",
+        ("nvidia_smi", "runtime"): "gpu_exporter_runtime",
+        ("dcgm", "cdi"): "dcgm_exporter",
+        ("dcgm", "runtime"): "dcgm_exporter_runtime",
+    }[(exporter, gpu_method)]
+    assert sorted(exporters) == [expected]
+    (service,) = exporters.values()
+    image = LOCK["containers"]["images"]["dcgm_exporter" if exporter == "dcgm" else "gpu_exporter"]
+    assert service["image"] == f"{image['image']}@{image['digest']}"
+    other = LOCK["containers"]["images"]["gpu_exporter" if exporter == "dcgm" else "dcgm_exporter"]
+    assert all(s["image"] != f"{other['image']}@{other['digest']}" for s in services.values())
+    port = variables["pinka_internal_ports"]["gpu_exporter"]
+    flag = "--address" if exporter == "dcgm" else "--web.listen-address"
+    assert service["command"] == [f"{flag}=127.0.0.1:{port}"]
+    ids = variables["observability_ids"]["gpu_exporter"]
+    assert service["user"] == f"{ids['uid']}:{ids['gid']}"
+    # No capabilities: no profiling metrics, nothing beyond the exporter's reads.
+    assert service["cap_drop"] == ["ALL"]
+    assert "cap_add" not in service
+    assert service["read_only"] is True
+    assert service["security_opt"] == ["no-new-privileges:true"]
+    assert service["network_mode"] == "host"
+    # What every lab container gets (as in test_compose_config_is_valid).
+    assert service["cgroup_parent"] == "pinka-services.slice"
+    assert service["logging"] == {
+        "driver": "local",
+        "options": {"max-size": "20m", "max-file": "5"},
+    }
+    if gpu_method == "cdi":
+        assert [d["source"] for d in service["devices"]] == ["nvidia.com/gpu=all"]
+    else:
+        assert service["runtime"] == "nvidia"
+
+
 def test_postgres_configuration() -> None:
     text = render_file(INFRA / "config/postgres/postgresql.conf.j2", postgres_vars())
     settings = dict(

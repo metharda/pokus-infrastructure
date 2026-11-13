@@ -106,7 +106,9 @@ add it to your PowerShell profile.
 ## Known limitations
 
 - **No DCGM.** NVIDIA's DCGM does not support WSL2; GPU metrics come from an
-  `nvidia-smi`-based exporter.
+  `nvidia-smi`-based exporter. `observability_gpu_exporter: dcgm` is refused
+  where the lab uses the GPU (preflight leaves the `dcgm_metrics` feature
+  off).
 - **Nested virtualization.** VM targets need `/dev/kvm`, which depends on the
   Windows version, the CPU and `nestedVirtualization`. Without it preflight
   reports `vm_targets` as disabled and the lab runs container targets only.

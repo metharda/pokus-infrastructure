@@ -12,7 +12,9 @@ the Compose projects of the lab services:
   platform; containers join them to reach the socket directories) and, for
   projects
   with `compose_gpu`, `COMPOSE_PROFILES` (`gpu-cdi` or `gpu-runtime`, after
-  the GPU method the docker role wrote into `/etc/docker/daemon.json`);
+  the GPU method the docker role wrote into `/etc/docker/daemon.json`;
+  `compose_gpu_profile: dcgm` names `dcgm-cdi` or `dcgm-runtime` instead,
+  the observability project's DCGM exporter);
 - adds the UID and GID of each container's account
   (`compose_container_accounts`: `pinka-postgres`, `pinka-monitor` and
   `pinka-opa` in `core`, `pinka-vllm` in `inference`; the observability

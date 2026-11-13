@@ -1,7 +1,7 @@
 {
   "uid": "pinka-gpu-vllm",
   "title": "pinka: GPU and vLLM",
-  "description": "Managed by pinka (config/grafana/dashboards/gpu-vllm.json). Local changes will be overwritten. GPU utilization, memory, temperature and power (nvidia_gpu_exporter) and vLLM serving metrics.",
+  "description": "Managed by pinka (config/grafana/dashboards/gpu-vllm.json). Local changes will be overwritten. GPU utilization, memory, temperature and power (from the GPU exporter that runs: nvidia_gpu_exporter or the DCGM exporter) and vLLM serving metrics.",
   "tags": [
     "pinka"
   ],
@@ -60,7 +60,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "nvidia_smi_utilization_gpu_ratio",
+          "expr": "nvidia_smi_utilization_gpu_ratio or label_replace(DCGM_FI_DEV_GPU_UTIL / 100, \"uuid\", \"$1\", \"UUID\", \"(.*)\")",
           "legendFormat": "{{uuid}}"
         }
       ],
@@ -103,7 +103,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "nvidia_smi_memory_used_bytes",
+          "expr": "nvidia_smi_memory_used_bytes or label_replace(DCGM_FI_DEV_FB_USED * 1048576, \"uuid\", \"$1\", \"UUID\", \"(.*)\")",
           "legendFormat": "used {{uuid}}"
         },
         {
@@ -114,6 +114,15 @@
           },
           "expr": "nvidia_smi_memory_total_bytes",
           "legendFormat": "total {{uuid}}"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "label_replace(DCGM_FI_DEV_FB_FREE * 1048576, \"uuid\", \"$1\", \"UUID\", \"(.*)\")",
+          "legendFormat": "free {{uuid}}"
         }
       ],
       "id": 2
@@ -155,7 +164,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "nvidia_smi_temperature_gpu",
+          "expr": "nvidia_smi_temperature_gpu or label_replace(DCGM_FI_DEV_GPU_TEMP, \"uuid\", \"$1\", \"UUID\", \"(.*)\")",
           "legendFormat": "{{uuid}}"
         }
       ],
@@ -198,7 +207,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "nvidia_smi_power_draw_watts",
+          "expr": "nvidia_smi_power_draw_watts or label_replace(DCGM_FI_DEV_POWER_USAGE, \"uuid\", \"$1\", \"UUID\", \"(.*)\")",
           "legendFormat": "{{uuid}}"
         }
       ],

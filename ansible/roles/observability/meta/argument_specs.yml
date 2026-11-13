@@ -39,7 +39,9 @@ argument_specs:
         type: str
         default: nvidia_smi
         choices: [nvidia_smi, dcgm]
-        description: GPU exporter with gpu_inference; dcgm is refused while its image is unverified.
+        description: >-
+          GPU exporter where the lab uses the GPU, the only one that runs; dcgm (the DCGM exporter)
+          is refused without the dcgm_metrics feature and while its image is unverified.
       observability_grafana_db_password:
         type: str
         description: Password of the active platform's Grafana role (default from vault_postgres_passwords; "" without a platform database).

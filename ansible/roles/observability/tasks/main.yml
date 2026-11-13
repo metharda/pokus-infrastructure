@@ -240,6 +240,39 @@
   changed_when: observability_runtime_tmpfiles is changed
   when: not ansible_check_mode
 
+# One container, pinka-gpu-exporter, serves the GPU exporter. Compose keeps
+# the container of a service a profile turned off (neither reconciled nor an
+# orphan), so after another choice of exporter or GPU method the old one would
+# keep the name and the chosen one could not start: it is removed first. Only
+# the observability project's own container; anything else of that name is
+# left to Compose, which then refuses to start.
+- name: Read which GPU exporter service the exporter's container runs
+  ansible.builtin.command:
+    argv:
+      - docker
+      - inspect
+      - --type
+      - container
+      - --format
+      - >-
+        {{ '{{' }}index .Config.Labels "com.docker.compose.project"{{ '}}' }}
+        {{ '{{' }}index .Config.Labels "com.docker.compose.service"{{ '}}' }}
+      - pinka-gpu-exporter
+  register: observability_gpu_container
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Remove the container of another GPU exporter or GPU method
+  ansible.builtin.command:
+    argv: [docker, rm, --force, pinka-gpu-exporter]
+  changed_when: true
+  when:
+    - not ansible_check_mode
+    - observability_gpu_container.rc == 0
+    - (observability_gpu_container.stdout.split() + [''])[0] == 'pinka-observability'
+    - (observability_gpu_container.stdout.split() + ['', ''])[1] != observability_gpu_service
+
 - name: Start the observability services
   ansible.builtin.include_role:
     name: compose
@@ -247,6 +280,8 @@
     compose_project: observability
     compose_description: telemetry, metrics, logs, traces and dashboards
     compose_gpu: "{{ observability_gpu }}"
+    # The exporter observability_gpu_exporter names, and only that one.
+    compose_gpu_profile: "{{ 'dcgm' if observability_gpu_exporter == 'dcgm' else 'gpu' }}"
     compose_profiles: "{{ ['stores'] if observability_stores else [] }}"
     compose_extra_env:
       PROMETHEUS_RETENTION: "{{ observability_prometheus_retention }}"
