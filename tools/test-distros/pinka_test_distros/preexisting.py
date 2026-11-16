@@ -92,7 +92,8 @@ def tailscale_pins(
         The pins.
 
     Raises:
-        PinError: When the key URL, a verified repository or the version is missing.
+        PinError: When the key URL, a verified repository or the version is missing, or
+            the version differs per architecture.
     """
     locked = _load(lock)
     key = locked["repository_keys"]["keys"]["tailscale"]
@@ -103,7 +104,13 @@ def tailscale_pins(
     if repo.get("verify"):
         raise PinError(f"Tailscale's apt repository is not verified: {repo['verify']}")
     pinned = (locked["packages"]["tailscale"] or {}).get(f"{os_id}-{version_id}")
-    if not isinstance(pinned, dict) or not pinned.get("tailscale"):
+    version = pinned.get("tailscale") if isinstance(pinned, dict) else None
+    if isinstance(version, dict):
+        raise PinError(
+            f"the lock pins Tailscale per architecture for {os_id}-{version_id};"
+            " the pre-existing install takes one version"
+        )
+    if not version:
         raise PinError(f"the lock pins no Tailscale version for {os_id}-{version_id}")
     uri = str(repo["uri"]).format(distro=os_id)
     suite = str(repo["suite"]).format(codename=codename)
@@ -112,7 +119,7 @@ def tailscale_pins(
         key_url=urls[0],
         fingerprint=str(key["fingerprint"]),
         repository=f"{uri} {suite} {components}",
-        version=str(pinned["tailscale"]),
+        version=str(version),
     )
 
 

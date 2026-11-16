@@ -453,8 +453,14 @@ clarification.
 
 ### Changes to the draft of contract v2
 
-The changes under `contract/` before the first infra release, which keep
-the version (see "Changing the contract" above).
+The changes before the first infra release, which keep the version: to
+`contract/` (see "Changing the contract" above), and to every file this page
+names as one a platform reads, such as the host profile and
+`bootstrap-state.json` ([Paths](#paths)), the fingerprint and the records
+([Provenance, records and keys](#provenance-records-and-keys)), the GPU
+arbiter's records ([Inference and the GPU](#inference)), and the principals
+and endpoints files
+([Principals and endpoints files](#principals-and-endpoints-files)).
 
 | Change | What a platform sees |
 | --- | --- |

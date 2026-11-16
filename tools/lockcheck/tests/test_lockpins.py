@@ -693,8 +693,16 @@ def test_the_run_prints_every_section_in_the_lock_format() -> None:
         "urls": list(lockpins.KEY_URLS["zabbly"]),
         "fingerprint": ZABBLY_FP,
     }
-    assert blocks["packages.incus"]["ubuntu-24.04"] == {"incus": "1:6.0.6-x-202603272003"}
+    # Zabbly's builds differ per architecture: a version for each; Tailscale's do not.
+    assert blocks["packages.incus"]["ubuntu-24.04"] == {
+        "incus": {"x86_64": "1:6.0.6-x-202603272003", "aarch64": "1:6.0.6-x-202603272249"}
+    }
     assert blocks["packages.tailscale"]["debian-13"] == {"tailscale": "1.104.1"}
+    incus = text.split("# --- packages.incus ", 1)[1].split("# --- ", 1)[0]
+    assert incus.count("# a version per architecture for incus: the builds differ") == 4
+    tailscale = text.split("# --- packages.tailscale ", 1)[1].split("# --- ", 1)[0]
+    assert "the same versions on x86_64 and aarch64" in tailscale
+    assert "per architecture" not in tailscale
     assert blocks["containers.images.dcgm_exporter"]["dcgm_exporter"]["tag"] == "4.8.10"
     sizes = blocks["containers.images.<name>.sizes"]
     assert set(sizes) == set(LOCK["containers"]["images"])
@@ -707,7 +715,6 @@ def test_the_run_prints_every_section_in_the_lock_format() -> None:
     }
     assert set(blocks["github_ssh_host_keys.keys"]) == set(lockpins.SSH_KEY_TYPES)
     assert blocks["nvidia_driver_gpus.releases"][DRIVER_VERSION]["open_module"] == ["1E04", "2786"]
-    assert "aarch64 hosts cannot install it" in text  # Zabbly's builds differ per architecture
     assert text.startswith("# make lock-pins 2026-10-17T12:00:00Z")
 
 
@@ -833,7 +840,48 @@ def test_a_pinned_version_gone_from_its_index_is_reported() -> None:
     assert "# 1 section(s) not pinned; see the NOT PINNED lines" in text
     assert [f.split(":")[0] for f in failed if lockpins.GONE not in f] == ["nvidia_driver_gpus"]
     # The new pin is still printed for the maintainer to paste.
-    assert blocks_of(text)["packages.incus"]["ubuntu-24.04"] == {"incus": "1:6.0.6-x-202603272003"}
+    assert blocks_of(text)["packages.incus"]["ubuntu-24.04"] == {
+        "incus": {"x86_64": "1:6.0.6-x-202603272003", "aarch64": "1:6.0.6-x-202603272249"}
+    }
+
+
+def test_a_version_per_architecture_is_looked_up_in_its_architecture() -> None:
+    world = World()
+    world.set_meta()
+    lock = pinned_lock()
+    # Listed for its own architecture only: not gone.
+    lock["packages"]["incus"]["ubuntu-24.04"] = {
+        "incus": {"x86_64": "1:6.0.6-x-202603272003", "aarch64": "1:6.0.6-x-202603272249"}
+    }
+    # The aarch64 version gone (and listed for amd64 only), the x86_64 one still there.
+    lock["packages"]["incus"]["debian-13"] = {
+        "incus": {"x86_64": "1:6.0.6-x-202603272003", "aarch64": "1:6.0.6-x-202603272003"}
+    }
+    # A package's one version is looked up for x86_64 only: the aarch64 build differs.
+    lock["packages"]["incus"]["ubuntu-22.04"] = {"incus": "1:6.0.6-x-202603272003"}
+    # A marked version is left to the marker check.
+    lock["packages"]["incus"]["ubuntu-26.04"] = {
+        "incus": {"x86_64": "1:6.0.6-x-202603272003", "aarch64": "TODO(verify)"}
+    }
+    text, failed = run(world, lock)
+    assert failed == [
+        "packages.incus.debian-13: the pinned incus (aarch64) 1:6.0.6-x-202603272003 is no"
+        " longer in its index; apt cannot install it"
+    ]
+    assert text.count("# NOT IN THE INDEX: ") == 1
+
+
+def test_package_pins_render_one_version_or_one_per_architecture() -> None:
+    versions = {
+        "x86_64": {"incus": "1:6.0.7-a", "incus-client": "2"},
+        "aarch64": {"incus": "1:6.0.7-b", "incus-client": "2"},
+    }
+    rendered = lockpins.render_package_pins(versions)
+    assert rendered == 'incus: {x86_64: "1:6.0.7-a", aarch64: "1:6.0.7-b"}, incus-client: "2"'
+    assert yaml.safe_load(f"{{{rendered}}}") == {
+        "incus": {"x86_64": "1:6.0.7-a", "aarch64": "1:6.0.7-b"},
+        "incus-client": "2",
+    }
 
 
 def test_a_marked_pin_and_a_package_outside_the_layout_are_not_reported_gone() -> None:

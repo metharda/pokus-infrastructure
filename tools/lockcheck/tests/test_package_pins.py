@@ -253,6 +253,112 @@ def test_each_release_reads_its_own_suite_and_one_key_download_serves_all() -> N
     assert repo.fetched.count("https://key.example/zabbly.gpg") == 1
 
 
+NOBLE_ARM64 = f"{ZABBLY_NOBLE}/main/binary-arm64/Packages.gz"
+
+
+def zabbly_both(repo: Repo, amd64: list[str], arm64: list[str]) -> None:
+    repo.add(
+        ZABBLY,
+        ZABBLY_NOBLE,
+        {"main/binary-amd64/": {"incus": amd64}, "main/binary-arm64/": {"incus": arm64}},
+        components="main",
+    )
+
+
+def test_a_version_per_architecture_is_looked_up_in_its_architectures_index() -> None:
+    repo = network()
+    zabbly_both(repo, ["1:6.0.7-a"], ["1:6.0.7-b"])
+    pin = {"incus": {"x86_64": "1:6.0.7-a", "aarch64": "1:6.0.7-b"}}
+    assert run(doc({"incus": {"ubuntu-24.04": pin}}), repo) == []
+    assert repo.fetched == [
+        "https://key.example/zabbly.gpg",
+        f"{ZABBLY_NOBLE}/InRelease",
+        NOBLE_INDEX,
+        NOBLE_ARM64,
+    ]
+
+
+def test_a_version_per_architecture_missing_from_its_index_names_the_architecture() -> None:
+    repo = network()
+    # Each version is listed, but for the other architecture only.
+    zabbly_both(repo, ["1:6.0.7-b"], ["1:6.0.7-a"])
+    pin = {"incus": {"x86_64": "1:6.0.7-a", "aarch64": "1:6.0.7-b"}, "incus-tools": "1"}
+    assert run(doc({"incus": {"ubuntu-24.04": pin}}), repo) == [
+        f"error: packages.incus.ubuntu-24.04: incus (x86_64) 1:6.0.7-a is not in {NOBLE_INDEX},"
+        " so apt cannot install it; renew the pin (docs/how-to/update-versions.md)",
+        f"error: packages.incus.ubuntu-24.04: incus-tools 1 is not in {NOBLE_INDEX}, so apt"
+        " cannot install it; renew the pin (docs/how-to/update-versions.md)",
+        f"error: packages.incus.ubuntu-24.04: incus (aarch64) 1:6.0.7-b is not in {NOBLE_ARM64},"
+        " so apt cannot install it; renew the pin (docs/how-to/update-versions.md)",
+    ]
+
+
+def test_a_marked_version_of_one_architecture_is_left_to_the_marker_check() -> None:
+    repo = network()
+    zabbly_both(repo, ["1:6.0.7-a"], [])
+    pin = {"incus": {"x86_64": "1:6.0.7-a", "aarch64": "TODO(verify)"}}
+    assert run(doc({"incus": {"ubuntu-24.04": pin}}), repo) == []
+    assert NOBLE_ARM64 not in repo.fetched
+
+
+def test_an_architecture_the_release_file_lacks_fails_that_architecture_alone() -> None:
+    repo = network()
+    zabbly(repo, ["1:6.0.7-a"])  # an amd64 index only
+    pin = {"incus": {"x86_64": "1:6.0.7-a", "aarch64": "1:6.0.7-b"}}
+    (found,) = run(doc({"incus": {"ubuntu-24.04": pin}}), repo)
+    assert found.startswith("error: packages.incus.ubuntu-24.04: cannot check the pin (aarch64): ")
+    assert NOBLE_INDEX in repo.fetched
+
+
+def test_an_architecture_the_lock_does_not_have_is_an_error() -> None:
+    repo = network()
+    zabbly(repo, ["1:6.0.7-a"])
+    pin = {"incus": {"x86_64": "1:6.0.7-a", "riscv64": "1:6.0.7-c"}}
+    assert run(doc({"incus": {"ubuntu-24.04": pin}}), repo) == [
+        "error: packages.incus.ubuntu-24.04: cannot check the pin (riscv64): riscv64 is not an"
+        " architecture of the lock (x86_64, aarch64)"
+    ]
+
+
+def test_a_version_per_architecture_of_a_flat_repository_reads_its_architectures_uri() -> None:
+    # The Toolkit's flat repository names the architecture in its URI.
+    repo = network()
+    for apt_arch, version in (("amd64", "1.20.1-1"), ("arm64", "1.20.1-2")):
+        repo.add(CTK, CTK_URI.format(deb_arch=apt_arch), {"": {"tk": [version]}})
+    pin = {"tk": {"x86_64": "1.20.1-1", "aarch64": "1.20.1-2"}}
+    assert run(doc({"nvidia_container_toolkit": {"ubuntu-24.04": pin}}), repo) == []
+    arm64 = CTK_URI.format(deb_arch="arm64")
+    assert f"{arm64}/InRelease" in repo.fetched
+    pin = {"tk": {"x86_64": "1.20.1-1", "aarch64": "1.20.1-1"}}
+    assert run(doc({"nvidia_container_toolkit": {"ubuntu-24.04": pin}}), network_with(repo)) == [
+        "error: packages.nvidia_container_toolkit.ubuntu-24.04: tk (aarch64) 1.20.1-1 is not in"
+        f" {arm64}/Packages.gz, so apt cannot install it; renew the pin"
+        " (docs/how-to/update-versions.md)"
+    ]
+
+
+def test_a_version_per_architecture_of_the_distributions_archive_cannot_be_checked() -> None:
+    # Ubuntu's archive has no arm64 packages (they are on another server).
+    repo = network()
+    for suite in ARCHIVE.suites:
+        repo.add(
+            UBUNTU,
+            f"{ARCHIVE.uri}/dists/{suite.format(codename='noble')}",
+            {
+                f"{part}/binary-amd64/": {"nvidia-driver-580-open": ["580.1-0"]}
+                for part in ARCHIVE.components
+            },
+            components=" ".join(ARCHIVE.components),
+        )
+    pin = {"nvidia-driver-580-open": {"x86_64": "580.1-0", "aarch64": "580.1-0"}}
+    assert run(doc({"nvidia_driver": {"ubuntu-24.04": pin}}), repo) == [
+        "error: packages.nvidia_driver.ubuntu-24.04: cannot check the pin (aarch64):"
+        f" {ARCHIVE.uri} has no arm64 packages; no arm64 index is known for the"
+        " distribution's archive of ubuntu-24.04"
+    ]
+    assert not [url for url in repo.fetched if "arm64" in url]
+
+
 def test_a_flat_repository_with_sha512_only() -> None:
     repo = network()
     base = CTK_URI.format(deb_arch="amd64")

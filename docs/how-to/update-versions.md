@@ -59,7 +59,11 @@ repository and its security alerts:
 3. Edit `versions.lock.yml`: change the value, and update `verified_on` and
    `source` of the entry or section so that someone else can repeat the
    verification. Only stable releases are pinned; tags such as `latest` are
-   rejected by the schema.
+   rejected by the schema. A package version serves every architecture; where
+   the builds differ (Zabbly's Incus), the package takes
+   `{x86_64: <version>, aarch64: <version>}`, as `make lock-pins` prints it,
+   and the play installs the host's. The NVIDIA driver's packages take one
+   version, which their GPU list belongs to.
 
 4. Regenerate the derived files. Recompile the Ansible environment's lock only
    if you changed `python.packages`:
@@ -82,7 +86,9 @@ repository and its security alerts:
    image digest exists in its registry with the recorded sizes, each binary
    has the pinned sha256, each repository key has the pinned fingerprint, and
    each package version of an apt release is still in the index apt installs
-   it from, read through the index's signed release file:
+   it from (a package's one version in the amd64 index, a version per
+   architecture in its architecture's), read through the index's signed
+   release file:
 
     <!-- qa:run env=E0 -->
     ```bash

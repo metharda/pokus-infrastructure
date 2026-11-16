@@ -260,41 +260,16 @@
         },
         "source": {
           "$ref": "#/$defs/text"
+        },
+        "nvidia_driver": {
+          "$ref": "#/$defs/package_pins_one_version"
         }
       },
       "propertyNames": {
         "$ref": "#/$defs/identifier"
       },
       "additionalProperties": {
-        "type": "object",
-        "minProperties": 1,
-        "propertyNames": {
-          "$ref": "#/$defs/release"
-        },
-        "additionalProperties": {
-          "oneOf": [
-            {
-              "type": "object",
-              "minProperties": 1,
-              "propertyNames": {
-                "pattern": "^[a-z0-9][a-z0-9.+-]*$"
-              },
-              "additionalProperties": {
-                "oneOf": [
-                  {
-                    "$ref": "#/$defs/package_version"
-                  },
-                  {
-                    "$ref": "#/$defs/todo"
-                  }
-                ]
-              }
-            },
-            {
-              "$ref": "#/$defs/todo"
-            }
-          ]
-        }
+        "$ref": "#/$defs/package_pins"
       }
     },
     "nvidia_driver_gpus": {
@@ -568,6 +543,90 @@
     "package_version": {
       "type": "string",
       "pattern": "^([0-9]+:)?[0-9][A-Za-z0-9.+~_-]*$"
+    },
+    "package_version_per_arch": {
+      "description": "A package whose builds differ per architecture (Zabbly builds each one separately): the version for each architecture of the lock; the play picks the host's.",
+      "type": "object",
+      "required": [
+        "x86_64",
+        "aarch64"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "x86_64": {
+          "$ref": "#/$defs/package_version"
+        },
+        "aarch64": {
+          "$ref": "#/$defs/package_version"
+        }
+      }
+    },
+    "package_pins": {
+      "description": "A component's package pins per release: per package one version, a version per architecture, or the unverified marker; or the marker for the whole release.",
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "$ref": "#/$defs/release"
+      },
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "object",
+            "minProperties": 1,
+            "propertyNames": {
+              "pattern": "^[a-z0-9][a-z0-9.+-]*$"
+            },
+            "additionalProperties": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/package_version"
+                },
+                {
+                  "$ref": "#/$defs/package_version_per_arch"
+                },
+                {
+                  "$ref": "#/$defs/todo"
+                }
+              ]
+            }
+          },
+          {
+            "$ref": "#/$defs/todo"
+          }
+        ]
+      }
+    },
+    "package_pins_one_version": {
+      "description": "Package pins with one version for every architecture: the NVIDIA driver's, whose GPU list belongs to one version and which lock-pins reads for amd64 only.",
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "$ref": "#/$defs/release"
+      },
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "object",
+            "minProperties": 1,
+            "propertyNames": {
+              "pattern": "^[a-z0-9][a-z0-9.+-]*$"
+            },
+            "additionalProperties": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/package_version"
+                },
+                {
+                  "$ref": "#/$defs/todo"
+                }
+              ]
+            }
+          },
+          {
+            "$ref": "#/$defs/todo"
+          }
+        ]
+      }
     },
     "https_url": {
       "type": "string",

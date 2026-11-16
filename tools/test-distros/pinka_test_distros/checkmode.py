@@ -224,7 +224,8 @@ def unverified_roles(profile: dict[str, Any]) -> dict[str, str]:
     """Roles the play refuses on this release because their source is not verified.
 
     Mirrors the refusals of the play: the component's source entry, its vendor
-    repository and repository key, and its package pins (unverified markers).
+    repository and repository key, and its package pins for the container's
+    architecture (unverified markers, or no version for the architecture).
 
     Args:
         profile: Preflight's host profile from inside the container.
@@ -233,7 +234,7 @@ def unverified_roles(profile: dict[str, Any]) -> dict[str, str]:
         ``{role: reason}``.
 
     Raises:
-        CheckModeError: If the profile names no known release.
+        CheckModeError: If the profile names no known release or no architecture.
     """
     filters = _filters()
     sources = _load(ANSIBLE / "component-sources.yml")
@@ -247,6 +248,9 @@ def unverified_roles(profile: dict[str, Any]) -> dict[str, str]:
         identity = filters.release_identity(profile, codenames)
     except filters.PinkaFilterError as exc:
         raise CheckModeError(f"no release identity for the container: {exc}") from exc
+    arch = str((profile.get("os") or {}).get("arch") or "")
+    if not arch:
+        raise CheckModeError("the host profile names no architecture (os.arch)")
     refused: dict[str, str] = {}
     for role, component in SOURCED_ROLES.items():
         source = filters.component_source(
@@ -261,7 +265,7 @@ def unverified_roles(profile: dict[str, Any]) -> dict[str, str]:
             if not FINGERPRINT_RE.match(str(key["fingerprint"])):
                 reasons.append(f"repository key {repo['key']} is not verified")
         try:
-            filters.lock_packages(versions["packages"], component, identity["release_key"])
+            filters.lock_packages(versions["packages"], component, identity["release_key"], arch)
         except filters.PinkaFilterError as exc:
             reasons.append(str(exc))
         if reasons:
@@ -536,7 +540,9 @@ def main(
         profile, interpreter = check.prepare()
         skipped = unverified_roles(profile) if extended else {}
         for role, reason in sorted(skipped.items()):
-            write(f"-- skipping {role}, not tested, refused on this release: {reason}")
+            write(
+                f"-- skipping {role}, not tested, refused on this release or architecture: {reason}"
+            )
         playbook = EXTENDED_PLAYBOOK if extended else REQUIRED_PLAYBOOK
         variables = extra_vars(profile, interpreter)
         if extended:

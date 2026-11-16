@@ -432,3 +432,21 @@ def test_the_compiled_matrix_follows_the_latest_run_in_the_results(tmp_path: Pat
     test_results.update(results, [run(PASSED, "2026-11-03")])
     assert pending() is False
     assert len(test_results.load(results)) == 4  # every run kept
+
+
+def test_the_versions_page_shows_a_version_per_architecture() -> None:
+    from pinka_gen import versions  # noqa: PLC0415 - only here
+
+    section = {
+        "verified_on": "2026-11-13",
+        "source": "test",
+        "incus": {
+            "ubuntu-24.04": {"incus": {"x86_64": "1:6.0.7-a", "aarch64": "1:6.0.7-b"}},
+            "el-9": "TODO(verify)",
+        },
+        "docker": {"ubuntu-24.04": {"docker-ce": "5:29.8.2-1"}},
+    }
+    text = "".join(versions._packages({"packages": section}))
+    assert "| ubuntu-24.04 | incus | `1:6.0.7-a` (x86_64), `1:6.0.7-b` (aarch64) |" in text
+    assert "| ubuntu-24.04 | docker-ce | `5:29.8.2-1` |" in text
+    assert "| el-9 | — | TODO(verify) |" in text

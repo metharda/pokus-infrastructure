@@ -21,13 +21,18 @@ before it is committed. It covers:
   gpgv verified is read), name the components the layout uses and list the
   package indexes with the hash it states (every component; a flat
   repository's index next to its release file); the newest version of every
-  package the component installs is read for x86_64 and aarch64;
+  package the component installs is read for x86_64 and aarch64, and printed
+  as one version where both are the same, else as
+  ``{x86_64: <version>, aarch64: <version>}`` (Zabbly builds each
+  architecture separately);
 * the NVIDIA driver's packages of every Ubuntu release of the lock: the
   newest version in Ubuntu's restricted pocket (``-updates``, ``-security``,
   the release), amd64, through the machine's Ubuntu archive keyring;
-* every version the lock pins for one of these releases that its x86_64
-  (amd64) indexes no longer list (``NOT IN THE INDEX``; apt cannot install
-  it): the new pin is printed all the same, and the run exits 1;
+* every version the lock pins for one of these releases that its indexes no
+  longer list (``NOT IN THE INDEX``; apt cannot install it; a package's one
+  version is looked up in the amd64 indexes, a version per architecture in
+  its architecture's): the new pin is printed all the same, and the run
+  exits 1;
 * the DCGM exporter image: the newest release tag on nvcr.io, cross-checked
   with the release's own ``hack/versions.env`` on GitHub, and its index
   digest and platforms;
@@ -94,7 +99,7 @@ FINGERPRINT_PAGES: dict[str, tuple[str, ...]] = {
 }
 KEYSERVER = "https://keyserver.ubuntu.com/pks/lookup?op=get&options=mr&search=0x{fingerprint}"
 # The lock's architectures and their apt names.
-APT_ARCHES = {"x86_64": "amd64", "aarch64": "arm64"}
+APT_ARCHES = checks.APT_ARCHES
 DCGM_IMAGE = "nvcr.io/nvidia/k8s/dcgm-exporter"
 DCGM_VERSIONS = "https://raw.githubusercontent.com/NVIDIA/dcgm-exporter/{tag}/hack/versions.env"
 # Release tags of the exporter since 4.8.4 are its own version only.
@@ -931,9 +936,12 @@ GONE = " is no longer in its index; "
 def _gone(lock: Mapping[str, Any], pin: PackagePin, gone: list[str]) -> list[str]:
     """Report every version the lock pins for the release that its indexes no longer list.
 
+    A package's one version is looked up in what the x86_64 indexes list, a
+    version per architecture in what its architecture's list.
+
     Args:
         lock: The lock.
-        pin: What the indexes list now (x86_64, the architecture the lock pins).
+        pin: What the indexes list now, per architecture.
         gone: Receives one line per version gone.
 
     Returns:
@@ -943,17 +951,42 @@ def _gone(lock: Mapping[str, Any], pin: PackagePin, gone: list[str]) -> list[str
     if not isinstance(pinned, Mapping):
         return []
     lines = []
-    listed = pin.available.get("x86_64", {})
     for package, version in pinned.items():
-        if checks.MARKER_RE.search(str(version)) or str(version) in listed.get(str(package), set()):
-            continue
-        message = (
-            f"packages.{pin.component}.{pin.release}: the pinned {package} {version}{GONE}"
-            "apt cannot install it"
-        )
-        gone.append(message)
-        lines.append(f"# NOT IN THE INDEX: {message}")
+        per_arch = isinstance(version, Mapping)
+        for arch, value in version.items() if per_arch else [("x86_64", version)]:
+            listed = pin.available.get(str(arch), {}).get(str(package), set())
+            if checks.MARKER_RE.search(str(value)) or str(value) in listed:
+                continue
+            label = f" ({arch})" if per_arch else ""
+            message = (
+                f"packages.{pin.component}.{pin.release}: the pinned {package}{label} {value}"
+                f"{GONE}apt cannot install it"
+            )
+            gone.append(message)
+            lines.append(f"# NOT IN THE INDEX: {message}")
     return lines
+
+
+def render_package_pins(versions: Mapping[str, Mapping[str, str]]) -> str:
+    """A release's package pins in the lock's format, from the x86_64 and aarch64 versions.
+
+    A package whose versions are the same gets one version, the others
+    ``{x86_64: <version>, aarch64: <version>}``.
+
+    Args:
+        versions: ``{arch: {package: version}}`` for x86_64 and aarch64.
+
+    Returns:
+        The inside of the release's mapping (``incus: "1:6.0.7-..."``).
+    """
+    main, other = versions["x86_64"], versions["aarch64"]
+    parts = []
+    for package, version in main.items():
+        if other[package] == version:
+            parts.append(f'{package}: "{version}"')
+        else:
+            parts.append(f'{package}: {{x86_64: "{version}", aarch64: "{other[package]}"}}')
+    return ", ".join(parts)
 
 
 def run(  # noqa: PLR0912, PLR0915 - one block per section
@@ -1010,23 +1043,20 @@ def run(  # noqa: PLR0912, PLR0915 - one block per section
             lines.append(f"# {release}: NOT PINNED: {exc}")
             continue
         lines += _gone(lock, pin, gone)
-        main, other = pin.versions["x86_64"], pin.versions["aarch64"]
-        rendered = ", ".join(f'{p}: "{v}"' for p, v in main.items())
-        lines.append(f"{release}: {{{rendered}}}")
+        lines.append(f"{release}: {{{render_package_pins(pin.versions)}}}")
         lines += _comment(
             [f"InRelease of {repo_name} signed by {key.fingerprint}; {i}" for i in pin.index], "  "
         )
-        if other != main:
-            lines += _comment(
-                [
-                    "x86_64 versions above; aarch64 has "
-                    + ", ".join(f"{p} {v}" for p, v in other.items())
-                    + " (the lock has one version per release: aarch64 hosts cannot install it)"
-                ],
-                "  ",
-            )
-        else:
-            lines += _comment(["the same versions on x86_64 and aarch64"], "  ")
+        main, other = pin.versions["x86_64"], pin.versions["aarch64"]
+        differ = [p for p, v in main.items() if other[p] != v]
+        lines += _comment(
+            [
+                f"a version per architecture for {', '.join(differ)}: the builds differ"
+                if differ
+                else "the same versions on x86_64 and aarch64"
+            ],
+            "  ",
+        )
     for component in COMPONENTS:
         out.append(
             f"# --- packages.{component} (apt releases; layout: ansible/component-sources.yml)"

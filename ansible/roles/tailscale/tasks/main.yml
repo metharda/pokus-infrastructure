@@ -12,7 +12,7 @@
 - name: Look up the Tailscale source
   ansible.builtin.set_fact:
     tailscale_source: "{{ pinka_component_sources | pinka_component_source('tailscale', pinka_source_group) }}"
-    tailscale_versions: "{{ pinka_versions.packages | pinka_lock_packages('tailscale', pinka_release_key) }}"
+    tailscale_versions: "{{ pinka_versions.packages | pinka_lock_packages('tailscale', pinka_release_key, ansible_facts['architecture']) }}"
     tailscale_adopted: "{{ (host_profile.components.tailscale | default({})).origin | default(none) == 'pre-existing' }}"
     tailscale_package_preexisting: >-
       {{ (host_profile.components.tailscale | default({})).origin | default(none) == 'pre-existing'

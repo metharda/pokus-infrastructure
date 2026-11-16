@@ -626,10 +626,38 @@ def test_the_drafts_changes_have_a_section_and_a_rule() -> None:
     changes = contract_section("Changes from contract v1")
     section = contract_section("Changes to the draft of contract v2", "###")
     assert section.strip() in changes
-    assert " ".join(section.split("\n\n| Change |")[0].split()) == (
-        "The changes under `contract/` before the first infra release, which keep the version "
-        '(see "Changing the contract" above).'
+    # It covers contract/ and every file the page names as one a platform reads.
+    intro = " ".join(section.split("\n\n| Change |")[0].split())
+    assert intro == (
+        "The changes before the first infra release, which keep the version: to `contract/` "
+        '(see "Changing the contract" above), and to every file this page names as one a '
+        "platform reads, such as the host profile and `bootstrap-state.json` ([Paths](#paths)), "
+        "the fingerprint and the records ([Provenance, records and "
+        "keys](#provenance-records-and-keys)), the GPU arbiter's records ([Inference and the "
+        "GPU](#inference)), and the principals and endpoints files ([Principals and endpoints "
+        "files](#principals-and-endpoints-files))."
     )
+    text = CONTRACT.read_text(encoding="utf-8")
+    for heading in (
+        "## Paths",
+        "## Provenance, records and keys",
+        "## Inference and the GPU {#inference}",
+        "### Principals and endpoints files",
+    ):
+        assert f"\n{heading}\n" in text, heading
+    paths = contract_section("Paths")
+    for named in (
+        "`/etc/pinka/host-profile.json`",
+        "`/etc/pinka/bootstrap-state.json`",
+        "`/var/lib/pinka/fingerprint/current.json`",
+    ):
+        assert named in paths, named
+    # The arbiter's records: a dataset's provenance, an adapter's manifest and lineage.
+    inference = table_rows(contract_section("Inference and the GPU {#inference}"))
+    assert "`PROVENANCE.json`" in one_row(inference, "Datasets")
+    adapters = one_row(inference, "Adapters")
+    assert "`MANIFEST.json`" in adapters and "`LINEAGE.json`" in adapters
+    one_row(table_rows(contract_section("Provenance, records and keys")), "Fingerprint")
     rows = table_rows(section)
     assert rows[:2] == ["| Change | What a platform sees |", "| --- | --- |"]
     # The reserved accounts of infra's containers: each one is reserved and

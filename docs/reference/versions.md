@@ -107,7 +107,7 @@ Verified on 2026-10-05. Source: Keys downloaded from the listed URLs and fingerp
 
 ## Packages
 
-Verified on 2026-10-05. Source: Repository indexes read on 2026-10-05: download.docker.com (apt Packages and rpm repodata for amd64/x86_64 and arm64/aarch64), the NVIDIA container toolkit repository (gh-pages branch of NVIDIA/libnvidia-container), archive.ubuntu.com; the newest version in each index. Tailscale on the apt releases: make lock-pins at 2026-10-17T22:47:21Z, and Incus (Zabbly) at 2026-11-12T09:45:13Z, each with the signed InRelease and the index sha256 checked. Ubuntu 26.04 (2026-11-12): Docker, the NVIDIA container toolkit, the NVIDIA driver and Tailscale on the versions of the other releases, Incus (Zabbly) on the newest build, each found in its signed index with make lock-pins. verified_on is the oldest of these reads.
+Verified on 2026-10-05. Source: Repository indexes read on 2026-10-05: download.docker.com (apt Packages and rpm repodata for amd64/x86_64 and arm64/aarch64), the NVIDIA container toolkit repository (gh-pages branch of NVIDIA/libnvidia-container), archive.ubuntu.com; the newest version in each index. Tailscale on the apt releases: make lock-pins at 2026-10-17T22:47:21Z, and Incus (Zabbly) at 2026-11-12T09:45:13Z, each with the signed InRelease and the index sha256 checked. Ubuntu 26.04 (2026-11-12): Docker, the NVIDIA container toolkit, the NVIDIA driver and Tailscale on the versions of the other releases, Incus (Zabbly) on the newest build, each found in its signed index with make lock-pins. Incus's aarch64 builds (Zabbly): make lock-pins at 2026-11-13T12:58:32Z, each in its signed arm64 index. verified_on is the oldest of these reads.
 
 ### docker
 
@@ -205,10 +205,10 @@ Verified on 2026-10-05. Source: Repository indexes read on 2026-10-05: download.
 
 | Release | Package | Version |
 | --- | --- | --- |
-| ubuntu-24.04 | incus | `1:6.0.7-ubuntu24.04-202610301755` |
-| ubuntu-26.04 | incus | `1:6.0.7-ubuntu26.04-202610301755` |
-| ubuntu-22.04 | incus | `1:6.0.7-ubuntu22.04-202610301755` |
-| debian-13 | incus | `1:6.0.7-debian13-202610301800` |
+| ubuntu-24.04 | incus | `1:6.0.7-ubuntu24.04-202610301755` (x86_64), `1:6.0.7-ubuntu24.04-202610301834` (aarch64) |
+| ubuntu-26.04 | incus | `1:6.0.7-ubuntu26.04-202610301755` (x86_64), `1:6.0.7-ubuntu26.04-202610301838` (aarch64) |
+| ubuntu-22.04 | incus | `1:6.0.7-ubuntu22.04-202610301755` (x86_64), `1:6.0.7-ubuntu22.04-202610301828` (aarch64) |
+| debian-13 | incus | `1:6.0.7-debian13-202610301800` (x86_64), `1:6.0.7-debian13-202610302003` (aarch64) |
 | fedora-43 | — | TODO(verify) |
 | fedora-44 | — | TODO(verify) |
 | el-9 | — | TODO(verify) |

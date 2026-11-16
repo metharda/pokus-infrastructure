@@ -128,6 +128,40 @@ def test_schema_rejects_bad_values(
     assert [f.where for f in checks.schema_findings(lock)] == [where]
 
 
+PER_ARCH = {"x86_64": "1:6.0.7-ubuntu24.04-1", "aarch64": "1:6.0.7-ubuntu24.04-2"}
+
+
+@pytest.mark.parametrize(
+    ("component", "pin", "valid"),
+    [
+        ("incus", {"incus": PER_ARCH}, True),
+        ("docker", {"docker-ce": PER_ARCH, "containerd.io": "2.3.6-1"}, True),
+        ("incus", {"incus": {"x86_64": PER_ARCH["x86_64"]}}, False),  # one architecture
+        (
+            "incus",
+            {"incus": {**PER_ARCH, "riscv64": "1"}},
+            False,
+        ),  # not an architecture of the lock
+        ("incus", {"incus": {**PER_ARCH, "aarch64": "TODO(verify)"}}, False),
+        ("incus", {"incus": {**PER_ARCH, "aarch64": "latest"}}, False),
+        ("incus", {"incus": {}}, False),
+        # The NVIDIA driver's GPU list belongs to one version: one for every architecture.
+        (
+            "nvidia_driver",
+            {"nvidia-driver-580-open": {"x86_64": "580.1-0", "aarch64": "580.1-0"}},
+            False,
+        ),
+        ("nvidia_driver", {"nvidia-driver-580-open": "580.1-0"}, True),
+    ],
+)
+def test_schema_takes_a_version_per_architecture_except_for_the_driver(
+    lock: dict[str, Any], component: str, pin: dict[str, Any], valid: bool
+) -> None:
+    lock["packages"][component]["ubuntu-24.04"] = pin
+    expected = [] if valid else [f"packages.{component}.ubuntu-24.04"]
+    assert [f.where for f in checks.schema_findings(lock)] == expected
+
+
 def test_schema_rejects_unknown_keys(lock: dict[str, Any]) -> None:
     lock["containers"]["mirror"] = "x"
     lock["containers"]["images"]["grafana"]["pull_policy"] = "always"

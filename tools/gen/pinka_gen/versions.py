@@ -172,11 +172,18 @@ def _packages(lock: dict[str, Any]) -> list[str]:
         rows: list[list[Any]] = []
         for release, versions in releases.items():
             if isinstance(versions, dict):
-                rows += [[release, name, _code(v)] for name, v in versions.items()]
+                rows += [[release, name, _package_version(v)] for name, v in versions.items()]
             else:
                 rows.append([release, "", _code(versions)])
         out += [f"### {component}\n\n", pages.table(["Release", "Package", "Version"], rows), "\n"]
     return out
+
+
+def _package_version(value: Any) -> str:  # noqa: ANN401 - YAML value
+    """One version, or each architecture's (``x86_64``, ``aarch64``) where they differ."""
+    if isinstance(value, dict):
+        return ", ".join(f"{_code(v)} ({arch})" for arch, v in value.items())
+    return _code(value)
 
 
 def _collections(lock: dict[str, Any]) -> list[str]:

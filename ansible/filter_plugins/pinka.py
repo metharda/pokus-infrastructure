@@ -185,29 +185,52 @@ def component_repos(components: Iterable[str], matrix: Mapping[str, Any]) -> lis
     return sorted(found)
 
 
-def lock_packages(packages: Mapping[str, Any], component: str, release_key: str) -> dict[str, str]:
-    """Return the pinned package versions of a component for one release.
+def lock_packages(
+    packages: Mapping[str, Any], component: str, release_key: str, arch: str
+) -> dict[str, str]:
+    """Return the pinned package versions of a component for one release and architecture.
+
+    A package's pin is one version for every architecture, or
+    ``{x86_64: <version>, aarch64: <version>}`` where the builds differ (Zabbly
+    builds each architecture separately); the host's architecture picks one.
 
     Args:
         packages: ``packages`` section of versions.lock.yml.
         component: Component name.
         release_key: Release key from ``release_identity`` (``""`` for rolling releases).
+        arch: The host's architecture (``ansible_facts['architecture']``: ``x86_64``,
+            ``aarch64``).
 
     Returns:
         ``{package: version}``; empty for rolling releases.
 
     Raises:
-        PinkaFilterError: If a fixed release has no verified pins.
+        PinkaFilterError: If a fixed release has no verified pins for the architecture.
     """
     if not release_key:
         return {}
+    unverified = PinkaFilterError(
+        f"versions.lock.yml has no verified pins for {component} on {release_key}; "
+        "verify them (docs/how-to/update-versions.md) before provisioning this release"
+    )
     entry = (packages.get(component) or {}).get(release_key)
-    if not isinstance(entry, Mapping) or any(MARKER in str(v) for v in entry.values()):
-        raise PinkaFilterError(
-            f"versions.lock.yml has no verified pins for {component} on {release_key}; "
-            "verify them (docs/how-to/update-versions.md) before provisioning this release"
-        )
-    return {str(k): str(v) for k, v in entry.items()}
+    if not isinstance(entry, Mapping):
+        raise unverified
+    versions: dict[str, str] = {}
+    for package, pin in entry.items():
+        version = pin
+        if isinstance(pin, Mapping):
+            if arch not in pin:
+                raise PinkaFilterError(
+                    f"versions.lock.yml pins {package} of {component} on {release_key} for "
+                    f"{', '.join(sorted(str(a) for a in pin))} only, not for this host's "
+                    f"{arch} (docs/how-to/update-versions.md)"
+                )
+            version = pin[arch]
+        versions[str(package)] = str(version)
+    if any(MARKER in v for v in versions.values()):
+        raise unverified
+    return versions
 
 
 def driver_supports_gpu(

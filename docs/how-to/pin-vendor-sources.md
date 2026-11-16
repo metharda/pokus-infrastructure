@@ -34,17 +34,20 @@ and changes no file. It covers:
   SHA512 where only that is stated). Only the text gpgv verified is read. The
   newest version of each package the component installs is read for x86_64
   and aarch64, from every component the layout names (the Toolkit's flat
-  repository has one release file per architecture). Zabbly builds each
-  architecture separately, so the two versions differ; the lock holds one
-  version per release, the x86_64 one, and the output says so.
+  repository has one release file per architecture). A package whose two
+  versions are the same gets one version; where they differ (Zabbly builds
+  each architecture separately), the output prints
+  `{x86_64: <version>, aarch64: <version>}`, a version per architecture, of
+  which the play installs the host's, and says so.
 - **The NVIDIA driver's packages** of every Ubuntu release the lock pins:
   the newest version in Ubuntu's restricted pocket (`-updates`, `-security`
   and the release suite), amd64, through the machine's Ubuntu archive
   keyring.
 - **Every pinned package version that is no longer in its index**, for each
-  of the above: the version the lock pins is looked up in every package of
-  the x86_64 (amd64) indexes read, the architecture the lock pins (the
-  driver's in the `restricted` component only, where Ubuntu publishes it).
+  of the above: a package's one version is looked up in every package of the
+  x86_64 (amd64) indexes read, a version per architecture in its
+  architecture's (the driver's in the `restricted` component only, where
+  Ubuntu publishes it).
   The output names each one gone (`NOT IN THE INDEX`), still prints the new
   pin, and the run exits 1, as `make lock-check` fails on it. A verified pin
   of an apt release outside these sources (the NVIDIA driver on Debian, once

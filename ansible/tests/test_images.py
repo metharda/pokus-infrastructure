@@ -205,10 +205,15 @@ def test_the_alias_rule_is_the_pinned_incus_version() -> None:
     # source: read them again when the pin moves.
     pins = [p for p in LOCK["packages"]["incus"].values() if isinstance(p, dict)]
     assert pins
+    # A Debian version: an optional epoch, the upstream version, a revision.
+    version = rf"([0-9]+:)?{re.escape(INCUS_RULE_VERSION)}([-~+].+)?"
     for pin in pins:
-        # A Debian version: an optional epoch, the upstream version, a revision.
-        version = rf"([0-9]+:)?{re.escape(INCUS_RULE_VERSION)}([-~+].+)?"
-        assert re.fullmatch(version, pin["incus"]), pin
+        # One version, or a version per architecture: each of them.
+        pinned = pin["incus"]
+        if isinstance(pinned, dict):
+            assert set(pinned) == {"x86_64", "aarch64"}, pin
+        for value in pinned.values() if isinstance(pinned, dict) else [pinned]:
+            assert re.fullmatch(version, value), pin
 
 
 def role_alias(name: str) -> str:

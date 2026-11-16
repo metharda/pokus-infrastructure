@@ -2,7 +2,7 @@
 # Generated from versions.lock.yml by tools/gen (make generate); do not edit.
 # bootstrap.sh stops when pinka_versions_lock_sha256 is not the sha256 of
 # versions.lock.yml.
-pinka_versions_lock_sha256: "a9a1c16a271bed61ec66646b9e6898fa9579620f663d9d45104e3afce97c77fd"
+pinka_versions_lock_sha256: "81b6d66951dd86cf5f7dcdfc0375cb0716550ff201945b50ff4735a60fc4b472"
 pinka_versions:
   schema_version: 1
   verified_on: '2026-10-05'
@@ -359,8 +359,9 @@ pinka_versions:
       the apt releases: make lock-pins at 2026-10-17T22:47:21Z, and Incus (Zabbly) at 2026-11-12T09:45:13Z,
       each with the signed InRelease and the index sha256 checked. Ubuntu 26.04 (2026-11-12): Docker,
       the NVIDIA container toolkit, the NVIDIA driver and Tailscale on the versions of the other releases,
-      Incus (Zabbly) on the newest build, each found in its signed index with make lock-pins. verified_on
-      is the oldest of these reads.'
+      Incus (Zabbly) on the newest build, each found in its signed index with make lock-pins. Incus''s
+      aarch64 builds (Zabbly): make lock-pins at 2026-11-13T12:58:32Z, each in its signed arm64 index.
+      verified_on is the oldest of these reads.'
     docker:
       ubuntu-24.04:
         docker-ce: 5:29.8.2-1~ubuntu.24.04~noble
@@ -465,13 +466,21 @@ pinka_versions:
         libnvidia-container1: 1.20.1-1
     incus:
       ubuntu-24.04:
-        incus: 1:6.0.7-ubuntu24.04-202610301755
+        incus:
+          x86_64: 1:6.0.7-ubuntu24.04-202610301755
+          aarch64: 1:6.0.7-ubuntu24.04-202610301834
       ubuntu-26.04:
-        incus: 1:6.0.7-ubuntu26.04-202610301755
+        incus:
+          x86_64: 1:6.0.7-ubuntu26.04-202610301755
+          aarch64: 1:6.0.7-ubuntu26.04-202610301838
       ubuntu-22.04:
-        incus: 1:6.0.7-ubuntu22.04-202610301755
+        incus:
+          x86_64: 1:6.0.7-ubuntu22.04-202610301755
+          aarch64: 1:6.0.7-ubuntu22.04-202610301828
       debian-13:
-        incus: 1:6.0.7-debian13-202610301800
+        incus:
+          x86_64: 1:6.0.7-debian13-202610301800
+          aarch64: 1:6.0.7-debian13-202610302003
       fedora-43: TODO(verify)
       fedora-44: TODO(verify)
       el-9: TODO(verify)

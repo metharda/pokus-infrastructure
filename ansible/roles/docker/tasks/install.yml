@@ -7,7 +7,7 @@
 - name: Look up the Docker source
   ansible.builtin.set_fact:
     docker_source: "{{ pinka_component_sources | pinka_component_source('docker', pinka_source_group) }}"
-    docker_versions: "{{ pinka_versions.packages | pinka_lock_packages('docker', pinka_release_key) }}"
+    docker_versions: "{{ pinka_versions.packages | pinka_lock_packages('docker', pinka_release_key, ansible_facts['architecture']) }}"
 
 - name: Refuse an unverified Docker source
   ansible.builtin.assert:

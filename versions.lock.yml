@@ -407,7 +407,9 @@ packages:
     sha256 checked. Ubuntu 26.04 (2026-11-12): Docker, the NVIDIA container
     toolkit, the NVIDIA driver and Tailscale on the versions of the other
     releases, Incus (Zabbly) on the newest build, each found in its signed
-    index with make lock-pins. verified_on is the oldest of these reads.
+    index with make lock-pins. Incus's aarch64 builds (Zabbly):
+    make lock-pins at 2026-11-13T12:58:32Z, each in its signed arm64 index.
+    verified_on is the oldest of these reads.
   docker:
     ubuntu-24.04:
       docker-ce: "5:29.8.2-1~ubuntu.24.04~noble"
@@ -484,21 +486,24 @@ packages:
   incus:
     # Incus 6.0 LTS. Ubuntu's own packages are 6.0.0
     # (24.04: 6.0.0-1ubuntu0.3) or missing (22.04), so Debian and Ubuntu use the
-    # Zabbly LTS repository (lts-6.0). Its versions: make lock-pins on
-    # 2026-11-12, the newest in each release's index, whose InRelease carries
-    # a valid signature of the pinned key and states the index's sha256.
+    # Zabbly LTS repository (lts-6.0). Its versions: make lock-pins, the newest
+    # in each release's index for each architecture (x86_64 on 2026-11-12;
+    # aarch64, experimental, on 2026-11-13, when x86_64 was the same), whose
+    # InRelease carries a valid signature of the pinned key and states the
+    # index's sha256.
     # Zabbly lists only the two newest builds of each release, so a pin stops
     # being installable once two newer builds are out; make lock-check fails
     # then. Zabbly builds each architecture separately and the version names
-    # the build: these are the x86_64 builds; aarch64 (experimental) has
-    # 1:6.0.7-ubuntu26.04-202610301838, 1:6.0.7-ubuntu24.04-202610301834,
-    # 1:6.0.7-ubuntu22.04-202610301828 and 1:6.0.7-debian13-202610302003,
-    # which one version per release cannot pin.
+    # the build, so each release has a version per architecture.
     # Fedora, EPEL/COPR and openSUSE repositories are not verified yet.
-    ubuntu-24.04: {incus: "1:6.0.7-ubuntu24.04-202610301755"}
-    ubuntu-26.04: {incus: "1:6.0.7-ubuntu26.04-202610301755"}
-    ubuntu-22.04: {incus: "1:6.0.7-ubuntu22.04-202610301755"}
-    debian-13: {incus: "1:6.0.7-debian13-202610301800"}
+    ubuntu-24.04:
+      incus: {x86_64: "1:6.0.7-ubuntu24.04-202610301755", aarch64: "1:6.0.7-ubuntu24.04-202610301834"}
+    ubuntu-26.04:
+      incus: {x86_64: "1:6.0.7-ubuntu26.04-202610301755", aarch64: "1:6.0.7-ubuntu26.04-202610301838"}
+    ubuntu-22.04:
+      incus: {x86_64: "1:6.0.7-ubuntu22.04-202610301755", aarch64: "1:6.0.7-ubuntu22.04-202610301828"}
+    debian-13:
+      incus: {x86_64: "1:6.0.7-debian13-202610301800", aarch64: "1:6.0.7-debian13-202610302003"}
     fedora-43: "TODO(verify)"
     fedora-44: "TODO(verify)"
     el-9: "TODO(verify)"

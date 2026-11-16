@@ -7,7 +7,7 @@
 - name: Look up the Incus source
   ansible.builtin.set_fact:
     incus_source: "{{ pinka_component_sources | pinka_component_source('incus', pinka_source_group) }}"
-    incus_versions: "{{ pinka_versions.packages | pinka_lock_packages('incus', pinka_release_key) }}"
+    incus_versions: "{{ pinka_versions.packages | pinka_lock_packages('incus', pinka_release_key, ansible_facts['architecture']) }}"
 
 - name: Refuse an unverified Incus source
   ansible.builtin.assert:
