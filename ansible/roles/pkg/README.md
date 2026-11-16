@@ -16,7 +16,7 @@ directly; they include this role with one of three entry points:
     name: pkg
   vars:
     pkg_packages: "{{ docker_source.packages }}"
-    pkg_versions: "{{ pinka_versions.packages | pinka_lock_packages('docker', pinka_release_key) }}"
+    pkg_versions: "{{ pinka_versions.packages | pinka_lock_packages('docker', pinka_release_key, ansible_facts['architecture']) }}"
 ```
 
 The apt and dnf modules of ansible-core run under the pinned CPython of

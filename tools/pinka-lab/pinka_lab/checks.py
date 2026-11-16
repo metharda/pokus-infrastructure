@@ -764,6 +764,74 @@ def check_vllm(ctx: Context) -> Outcome:
     return passed("vLLM is healthy")
 
 
+# The metric families of the GPU exporters observability_gpu_exporter names
+# (a comment line starts with "#", never with one of them).
+GPU_EXPORTER_METRICS = {"nvidia_smi": "nvidia_smi_", "dcgm": "DCGM_FI_DEV_"}
+# A metric present only when the exporter read a GPU: nvidia_gpu_exporter
+# serves status metrics of its own (nvidia_smi_failed_scrapes_total, ...) when
+# nvidia-smi fails, and nvidia_smi_gpu_info for every GPU it read, even one
+# whose utilization reads N/A. Every DCGM_FI_DEV_* sample is a GPU's already.
+GPU_EXPORTER_GPU_METRIC = {"nvidia_smi": "nvidia_smi_gpu_info"}
+
+
+def _metric_families(text: str) -> set[str]:
+    """The GPU exporters whose metrics a Prometheus text exposition holds."""
+    found: set[str] = set()
+    for line in text.splitlines():
+        for exporter, prefix in GPU_EXPORTER_METRICS.items():
+            if line.startswith(prefix):
+                found.add(exporter)
+    return found
+
+
+def _has_metric(text: str, name: str) -> bool:
+    """Whether a Prometheus text exposition has a sample of the metric."""
+    return any(line.startswith((name + "{", name + " ")) for line in text.splitlines())
+
+
+def _gpu_exporter_problem(chosen: str, url: str, status: int, body: str) -> str:
+    """What is wrong with the GPU exporter's answer, or "" when it is the chosen one's."""
+    if status != 200:  # noqa: PLR2004
+        return f"{url} answered {status or 'nothing'}"
+    found = _metric_families(body)
+    if chosen not in found:
+        other = ", ".join(sorted(found)) or "no GPU exporter's"
+        return (
+            f"{url} serves {other} metrics, not those of {chosen}, which "
+            "observability_gpu_exporter names"
+        )
+    if len(found) > 1:
+        return f"{url} serves the metrics of {', '.join(sorted(found))}, not {chosen} alone"
+    metric = GPU_EXPORTER_GPU_METRIC.get(chosen)
+    if metric and not _has_metric(body, metric):
+        return f"{url} serves no {metric}: the {chosen} exporter reads no GPU"
+    return ""
+
+
+def check_gpu_exporter(ctx: Context) -> Outcome:
+    """The GPU exporter observability_gpu_exporter names answers with its metrics.
+
+    No other exporter may stand in for it: an endpoint that serves the other
+    exporter's metrics, both, none, or no GPU's, fails.
+    """
+    gpu_feature = ctx.config.feature("gpu_inference") or ctx.config.feature("gpu_training")
+    if not gpu_feature or ctx.config.node_role not in ("full", "inference"):
+        return skipped("this node runs no GPU containers")
+    chosen = ctx.config.get("gpu", "exporter", default=None)
+    url = ctx.config.get("gpu", "exporter_metrics", default=None)
+    missing = [k for k, v in (("exporter", chosen), ("exporter_metrics", url)) if v is None]
+    if missing:
+        keys = " and ".join(f"gpu.{k}" for k in missing)
+        return failed(f"/etc/pinka/lab.json has no {keys}: run bootstrap with --tags doctor")
+    if str(chosen) not in GPU_EXPORTER_METRICS:
+        return failed(f"observability_gpu_exporter is {chosen!r}, not nvidia_smi or dcgm")
+    response = ctx.system.http("GET", str(url))
+    problem = _gpu_exporter_problem(str(chosen), str(url), response.status, response.body)
+    if problem:
+        return failed(problem)
+    return passed(f"the {chosen} exporter answers on {url}")
+
+
 def _days_left(ctx: Context, path: str) -> int | None:
     """Whole days until a certificate expires, or None if openssl cannot tell."""
     done = ctx.system.run(["openssl", "x509", "-noout", "-enddate", "-in", path])
@@ -2516,6 +2584,16 @@ CHECKS: tuple[Check, ...] = (
         "error",
         "`journalctl -u pinka-inference.service`; reactivate the deployment.",
         check_vllm,
+    ),
+    Check(
+        "gpu.exporter",
+        "The GPU exporter observability_gpu_exporter names (nvidia_smi or dcgm) answers on its "
+        "loopback port with its own metrics.",
+        "warning",
+        "`sudo docker logs pinka-gpu-exporter`; run bootstrap with --tags observability. A DCGM "
+        "exporter that cannot start says why in its log; where this GPU or driver has no DCGM "
+        "support, set observability_gpu_exporter to nvidia_smi in host_vars.",
+        check_gpu_exporter,
     ),
     Check(
         "gpu.arbiter",

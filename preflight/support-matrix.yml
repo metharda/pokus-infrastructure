@@ -31,6 +31,13 @@ release_model_notes:
     Rolling release: installed versions drift over time. Results are comparable only within the
     same environment fingerprint; update the host only with 'pinka update-host'.
 
+# The note for a release marked pending_verification (below) while the latest
+# make test-distros run of one of its targets has not passed every stage.
+pending_verification_note: >-
+  Pending verification: no make test-distros run of this release has passed yet, or the latest
+  run of one of its targets did not pass every stage. It is in its tier by the support matrix's
+  rules; the test VMs have not proven an install on it.
+
 lifecycle_sources:
   distro-info-data: >-
     Debian/Ubuntu distro-info-data 2026.08.20-1 (archive.ubuntu.com, package sha256
@@ -51,6 +58,16 @@ os:  # first match wins
     tier: supported
     release_model: fixed
     lifecycle: {released: "2024-04-25", end_of_support: "2029-05-31", source: distro-info-data}
+  # Pending verification unless the latest make test-distros run of each of its
+  # targets passed every stage (make generate reads tests/distros/results.yml,
+  # never a hand edit).
+  - match: {id: ubuntu, version_id: "26.04"}
+    family: debian
+    source_group: ubuntu
+    tier: supported
+    release_model: fixed
+    pending_verification: true
+    lifecycle: {released: "2026-04-23", end_of_support: "2031-05-29", source: distro-info-data}
   - match: {id: debian, version_id: "13"}
     family: debian
     source_group: debian
@@ -64,9 +81,6 @@ os:  # first match wins
     tier: tested
     release_model: fixed
     lifecycle: {released: "2022-04-21", end_of_support: "2027-06-01", source: distro-info-data}
-  # TODO(verify): Ubuntu 26.04 LTS (released 2026-04-23, end of support 2031-05-29 per
-  # distro-info-data; Docker publishes packages for it) is added as `tested` once Incus,
-  # the NVIDIA Container Toolkit and Tailscale support for it is verified.
   - match: {id: fedora, version_id_in: "@versions.lock:fedora_supported_releases.releases"}
     family: redhat
     source_group: fedora

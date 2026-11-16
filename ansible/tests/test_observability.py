@@ -24,6 +24,7 @@ from ansible_testlib import (
     GROUP_VARS,
     INFRA,
     ROLES,
+    _templar,
     ansible_vars,
     evaluate,
     fixture_profile,
@@ -257,6 +258,180 @@ def test_dashboards_use_provisioned_datasources(path: Path) -> None:
     for panel in dashboard["panels"]:
         for item in [panel, *panel["targets"]]:
             assert item["datasource"]["uid"] in {"prometheus", "loki", "tempo"}
+
+
+# The DCGM fields the GPU panels read: each among the default counters of the
+# pinned exporter (etc/default-counters.csv of dcgm-exporter at tag 4.8.4, commit
+# fafd1511480526280; a new pin is checked against its own list).
+DCGM_PINNED_TAG = "4.8.4"
+DCGM_DEFAULT_FIELDS_READ = {
+    "DCGM_FI_DEV_GPU_UTIL",
+    "DCGM_FI_DEV_FB_USED",
+    "DCGM_FI_DEV_FB_FREE",
+    "DCGM_FI_DEV_GPU_TEMP",
+    "DCGM_FI_DEV_POWER_USAGE",
+}
+
+
+def test_the_gpu_panels_read_whichever_exporter_runs() -> None:
+    dashboard = json.loads((CONFIG / "grafana" / "dashboards" / "gpu-vllm.json").read_text())
+    gpu = [p for p in dashboard["panels"] if p["title"].startswith("GPU ")]
+    titles = ["GPU utilization", "GPU memory", "GPU temperature", "GPU power"]
+    assert [p["title"] for p in gpu] == titles
+    read = set()
+    for panel in gpu:
+        exprs = " ".join(target["expr"] for target in panel["targets"])
+        assert "nvidia_smi_" in exprs and "DCGM_FI_DEV_" in exprs, panel["title"]
+        for target in panel["targets"]:
+            assert "{{uuid}}" in target["legendFormat"], target
+            fields = set(re.findall(r"DCGM_FI_[A-Z_]+", target["expr"]))
+            read |= fields
+            if fields:
+                # DCGM names the GPU UUID, nvidia_gpu_exporter uuid: the legends need uuid.
+                assert "label_replace(" in target["expr"], target
+                assert '"uuid", "$1", "UUID", "(.*)"' in target["expr"], target
+    assert read == DCGM_DEFAULT_FIELDS_READ
+    # Each DCGM field in the unit the nvidia-smi exporter's metric has.
+    exprs = " ".join(t["expr"] for p in gpu for t in p["targets"])
+    for scaled in (
+        "DCGM_FI_DEV_GPU_UTIL / 100",  # percent to ratio
+        "DCGM_FI_DEV_FB_USED * 1048576",  # MiB to bytes
+        "DCGM_FI_DEV_FB_FREE * 1048576",
+        "label_replace(DCGM_FI_DEV_GPU_TEMP, ",  # degrees C both
+        "label_replace(DCGM_FI_DEV_POWER_USAGE, ",  # watts both
+    ):
+        assert scaled in exprs, scaled
+    lock = load_yaml(INFRA / "versions.lock.yml")
+    assert lock["containers"]["images"]["dcgm_exporter"]["tag"] == DCGM_PINNED_TAG
+
+
+def observability_task(name: str) -> dict[str, Any]:
+    tasks = load_yaml(ROLES / "observability" / "tasks" / "main.yml")
+    return next(task for task in tasks if task.get("name") == name)
+
+
+@pytest.mark.parametrize(
+    ("exporter", "gpu", "dcgm_metrics", "allowed"),
+    [
+        ("nvidia_smi", True, False, True),
+        ("nvidia_smi", True, True, True),
+        ("dcgm", True, True, True),
+        # WSL2, or no NVIDIA driver loaded: refused, never replaced by nvidia_smi.
+        ("dcgm", True, False, False),
+        # No GPU in use: no exporter runs, so nothing to refuse.
+        ("dcgm", False, False, True),
+        # Training alone uses the GPU too.
+        ("dcgm", "training", False, False),
+        # The GPU flags absent read as off.
+        ("dcgm", "absent", False, True),
+        # The setting left out is the role's default, nvidia_smi.
+        (None, True, False, True),
+    ],
+)
+def test_dcgm_is_refused_where_dcgm_metrics_is_off(
+    exporter: str | None, gpu: bool | str, dcgm_metrics: bool, allowed: bool
+) -> None:
+    variables = obs_vars(gpu=gpu is True, training=gpu == "training" or None)
+    features = {**variables["pinka_features"], "dcgm_metrics": dcgm_metrics}
+    if gpu == "absent":
+        features = {k: v for k, v in features.items() if k not in ("gpu_inference", "gpu_training")}
+    variables["pinka_features"] = features
+    if exporter is None:
+        del variables["observability_gpu_exporter"]
+    else:
+        variables["observability_gpu_exporter"] = exporter
+    # In the preflight gate: before anything on the host changes.
+    tasks = load_yaml(ROLES / "preflight_gate" / "tasks" / "main.yml")
+    (check,) = [
+        t
+        for t in tasks
+        if t.get("name") == "Check that the chosen GPU exporter can run on this host"
+    ]
+    that = check["ansible.builtin.assert"]["that"]
+    assert all(evaluate(condition, variables) for condition in that) is allowed
+
+
+def test_the_gpu_exporter_refusal_comes_before_any_change() -> None:
+    play = load_yaml(INFRA / "ansible" / "site.yml")[0]
+    roles = [
+        (t.get("ansible.builtin.import_role") or t.get("ansible.builtin.include_role") or {}).get(
+            "name"
+        )
+        for t in play["tasks"]
+    ]
+    assert roles[:3] == ["platform_facts", "preflight_gate", "install_record"]
+    # With any --tags, too.
+    assert "always" in play["tasks"][1]["tags"]
+
+
+@pytest.mark.parametrize(
+    ("exporter", "method", "gpu", "service"),
+    [
+        ("nvidia_smi", "cdi", True, "gpu_exporter"),
+        ("nvidia_smi", "runtime", True, "gpu_exporter_runtime"),
+        ("dcgm", "cdi", True, "dcgm_exporter"),
+        ("dcgm", "runtime", True, "dcgm_exporter_runtime"),
+        ("dcgm", "cdi", False, ""),
+    ],
+)
+def test_a_container_of_another_exporter_is_removed_before_compose_starts(
+    exporter: str, method: str, gpu: bool, service: str
+) -> None:
+    variables = {
+        **obs_vars(gpu=gpu),
+        "observability_gpu_exporter": exporter,
+        "pinka_docker_gpu_method": method,
+        "ansible_check_mode": False,
+    }
+    assert evaluate("observability_gpu_service", variables) == service
+    read = observability_task("Read which GPU exporter service the exporter's container runs")
+    argv = read["ansible.builtin.command"]["argv"]
+    assert argv[:6] == ["docker", "inspect", "--type", "container", "--format", argv[5]]
+    from ansible.template import trust_as_template  # noqa: PLC0415 - heavy import
+
+    assert _templar(variables).template(trust_as_template(argv[5])) == (
+        '{{index .Config.Labels "com.docker.compose.project"}} '
+        '{{index .Config.Labels "com.docker.compose.service"}}'
+    )
+    assert argv[6:] == ["pinka-gpu-exporter"]
+    remove = observability_task("Remove the container of another GPU exporter or GPU method")
+    assert remove["ansible.builtin.command"]["argv"] == [
+        "docker",
+        "rm",
+        "--force",
+        "pinka-gpu-exporter",
+    ]
+
+    def removes(rc: int, labels: str, check_mode: bool = False) -> bool:
+        scope = {
+            **variables,
+            "ansible_check_mode": check_mode,
+            "observability_gpu_container": {"rc": rc, "stdout": labels + "\n"},
+        }
+        return all(evaluate(condition, scope) for condition in remove["when"])
+
+    others = {"gpu_exporter", "gpu_exporter_runtime", "dcgm_exporter", "dcgm_exporter_runtime"}
+    for other in sorted(others - {service}):
+        assert removes(0, f"pinka-observability {other}"), other
+        assert not removes(0, f"pinka-observability {other}", check_mode=True), other
+        # Only the observability project's own container.
+        assert not removes(0, f"another-project {other}"), other
+    if service:
+        assert not removes(0, f"pinka-observability {service}")
+    assert not removes(0, "")  # a container of that name without Compose's labels
+    assert not removes(1, "")  # no such container
+    # Read first, then removed, then Compose starts the chosen one, in this role.
+    names = [t.get("name") for t in load_yaml(ROLES / "observability" / "tasks" / "main.yml")]
+    assert names.index(read["name"]) + 1 == names.index(remove["name"])
+    assert names.index(remove["name"]) + 1 == names.index("Start the observability services")
+
+
+def test_the_compose_project_gets_the_chosen_exporters_profile() -> None:
+    include = observability_task("Start the observability services")["vars"]
+    expression = include["compose_gpu_profile"].strip("{} ")
+    for exporter, profile in (("nvidia_smi", "gpu"), ("dcgm", "dcgm")):
+        variables = {**obs_vars(gpu=True), "observability_gpu_exporter": exporter}
+        assert evaluate(expression, variables) == profile
 
 
 def test_expected_dashboards() -> None:

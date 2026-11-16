@@ -23,6 +23,9 @@ repository and its security alerts:
     - A development checkout of the repository with `make setup` done.
     - Network access to the upstream source of the artifact you change.
     - `gpg` if you change a repository key (only to cross-check the fingerprint).
+    - For the lock check's package pins: `gpgv` (package `gpgv`), and for the
+      NVIDIA driver's pins Ubuntu's archive keyring (package `ubuntu-keyring`,
+      installed on Ubuntu).
 
 ## Change a pin
 
@@ -45,7 +48,7 @@ repository and its security alerts:
     | --- | --- |
     | Container image | The registry: the digest of the image index for the tag, and that it contains `linux/amd64` (and `linux/arm64`); for a lab image also each platform's compressed size (`sizes`, the sum of its layers), which `make lock-pins` prints for every image of the lock. The DCGM exporter: `make lock-pins` ([How to pin the vendor sources](pin-vendor-sources.md)). |
     | Binary | The release page: download each archive, hash it with `sha256sum`, and compare with the checksum file of the release. |
-    | Package | The repository index (apt `Packages`, rpm `repodata`) of each pinned release, for every architecture. Incus from Zabbly and Tailscale on the apt releases: `make lock-pins`. |
+    | Package | The repository index (apt `Packages`, rpm `repodata`) of each pinned release, for every architecture. Every package of an apt release (Docker, the NVIDIA Container Toolkit, Incus from Zabbly, Tailscale, the NVIDIA driver on Ubuntu): `make lock-pins`. |
     | Repository key | Download the key and compare its primary key fingerprint with the one the vendor documents. The Zabbly and Tailscale keys: `make lock-pins`. |
     | Incus base image | `make lock-pins`, right before a lab's first golden image build: the image server keeps only its newest builds, a few days. |
     | GitHub's SSH host keys | `make lock-pins`, which needs two agreeing sources (GitHub's meta API, its documentation, `ssh-keyscan`). |
@@ -56,7 +59,11 @@ repository and its security alerts:
 3. Edit `versions.lock.yml`: change the value, and update `verified_on` and
    `source` of the entry or section so that someone else can repeat the
    verification. Only stable releases are pinned; tags such as `latest` are
-   rejected by the schema.
+   rejected by the schema. A package version serves every architecture; where
+   the builds differ (Zabbly's Incus), the package takes
+   `{x86_64: <version>, aarch64: <version>}`, as `make lock-pins` prints it,
+   and the play installs the host's. The NVIDIA driver's packages take one
+   version, which their GPU list belongs to.
 
 4. Regenerate the derived files. Recompile the Ansible environment's lock only
    if you changed `python.packages`:
@@ -77,7 +84,11 @@ repository and its security alerts:
 1. Run the lock check. It validates the lock against its schema, fails on any
    remaining `TODO(verify)`, and re-verifies every pin over the network: each
    image digest exists in its registry with the recorded sizes, each binary
-   has the pinned sha256, and each repository key has the pinned fingerprint:
+   has the pinned sha256, each repository key has the pinned fingerprint, and
+   each package version of an apt release is still in the index apt installs
+   it from (a package's one version in the amd64 index, a version per
+   architecture in its architecture's), read through the index's signed
+   release file:
 
     <!-- qa:run env=E0 -->
     ```bash
@@ -85,11 +96,20 @@ repository and its security alerts:
     ```
 
     ```text title="Output"
-    lock-check (network: containers, binaries, keys): 0 error(s), 0 warning(s)
+    lock-check (network: containers, binaries, keys, images, gpus, packages): 0 error(s), 0 warning(s)
     ```
 
     A warning that a tag "now points to" another digest is expected over time:
-    the pin keeps using its digest until you change it.
+    the pin keeps using its digest until you change it. A package version that
+    has left its index is an error: apt installs only what an index lists, and
+    some repositories list only their newest builds (Zabbly keeps two per
+    release) or the newest version of a pocket (Ubuntu's `-updates`), so a pin
+    can stop being installable without any change. The error names the pin and
+    the index; renew the pin as in steps 2 to 4 of [Change a pin](#change-a-pin).
+    CI's weekly run checks the lock too, so this shows up without a commit.
+    Each download of the check (a key, a release file, an index) is logged on
+    standard error, a line per attempt and the error of a failed one; a
+    transport error is tried again.
 
     CI's `lock-check` job runs the markers as a step of their own
     (`make lock-check-markers`): it passes while no more lines of the lock

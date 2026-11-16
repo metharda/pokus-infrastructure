@@ -182,6 +182,21 @@ def test_every_key_the_cli_reads_is_rendered() -> None:
     assert missing == []
 
 
+@pytest.mark.parametrize(
+    ("exporter", "image_key"), [("nvidia_smi", "gpu_exporter"), ("dcgm", "dcgm_exporter")]
+)
+def test_doctor_expects_the_gpu_exporter_that_is_chosen(exporter: str, image_key: str) -> None:
+    data = render(observability_gpu_exporter=exporter)
+    images = ansible_vars(GROUP_VARS.parent / "versions.yml")["pinka_versions"]["containers"][
+        "images"
+    ]
+    pinned = images[image_key]
+    # The containers check fails when the other exporter's image runs.
+    assert data["containers"]["pinka-gpu-exporter"] == f"{pinned['image']}@{pinned['digest']}"
+    assert data["gpu"]["exporter"] == exporter
+    assert data["gpu"]["exporter_metrics"] == "http://127.0.0.1:18726/metrics"
+
+
 def test_psql_runs_as_the_ids_of_postgresqls_account() -> None:
     # The UID, then the GID, of pinka_container_accounts.postgres (981 and 975
     # in POSTGRES_PASSWD): the CLI refuses anything but UID:GID.

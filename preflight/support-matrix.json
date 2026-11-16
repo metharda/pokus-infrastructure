@@ -1,5 +1,5 @@
 {
-  "_generated_from": "preflight/support-matrix.yml and ansible/component-sources.yml (nvidia_driver) by tools/gen (make generate); do not edit",
+  "_generated_from": "preflight/support-matrix.yml, ansible/component-sources.yml (nvidia_driver) and tests/distros/results.yml (pending_verification) by tools/gen (make generate); do not edit",
   "schema_version": 1,
   "families": {
     "debian": {
@@ -29,6 +29,7 @@
     "fast": "Fast-moving release: only the current and the previous release are in the matrix.",
     "rolling": "Rolling release: installed versions drift over time. Results are comparable only within the same environment fingerprint; update the host only with 'pinka update-host'."
   },
+  "pending_verification_note": "Pending verification: no make test-distros run of this release has passed yet, or the latest run of one of its targets did not pass every stage. It is in its tier by the support matrix's rules; the test VMs have not proven an install on it.",
   "lifecycle_sources": {
     "distro-info-data": "Debian/Ubuntu distro-info-data 2026.08.20-1 (archive.ubuntu.com, package sha256 77686dfe60970428c59ee0de9543c5d496e2e75216bc1f1516492d054ad799fd), verified 2026-10-05",
     "osinfo-db": "osinfo-db 0.20251212+git20260710.7306ae26 (archive.ubuntu.com, package sha256 cb48ca157c25aacbec867581ea1f33a8494d7f7bface3cb6691dc68f141f48e2), verified 2026-10-05"
@@ -46,6 +47,23 @@
       "lifecycle": {
         "released": "2024-04-25",
         "end_of_support": "2029-05-31",
+        "source": "distro-info-data"
+      },
+      "bootstrap_installs_nvidia_driver": true
+    },
+    {
+      "match": {
+        "id": "ubuntu",
+        "version_id": "26.04"
+      },
+      "family": "debian",
+      "source_group": "ubuntu",
+      "tier": "supported",
+      "release_model": "fixed",
+      "pending_verification": true,
+      "lifecycle": {
+        "released": "2026-04-23",
+        "end_of_support": "2031-05-29",
         "source": "distro-info-data"
       },
       "bootstrap_installs_nvidia_driver": true

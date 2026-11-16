@@ -275,9 +275,12 @@ class PreflightScreen(StepScreen):
             )
             return
         outcome = str(profile.get("outcome"))
+        pending = (
+            " · OS release pending verification" if profile.get("pending_verification") else ""
+        )
         report.mount(
             Static(
-                f"Outcome: {outcome} · tier {profile.get('tier')} · provider "
+                f"Outcome: {outcome} · tier {profile.get('tier')}{pending} · provider "
                 f"{profile.get('provider') or 'unknown'}",
                 classes=f"banner {OUTCOME_STYLE.get(outcome, 'warn')}",
                 id="outcome",

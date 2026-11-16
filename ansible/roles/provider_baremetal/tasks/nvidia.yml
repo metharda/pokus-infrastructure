@@ -102,7 +102,7 @@
         name: pkg
       vars:
         pkg_packages: "{{ provider_baremetal_driver.packages }}"
-        pkg_versions: "{{ pinka_versions.packages | pinka_lock_packages('nvidia_driver', pinka_release_key) }}"
+        pkg_versions: "{{ pinka_versions.packages | pinka_lock_packages('nvidia_driver', pinka_release_key, ansible_facts['architecture']) }}"
 
     - name: Hold the NVIDIA driver packages
       ansible.builtin.include_role:
@@ -111,7 +111,7 @@
       vars:
         pkg_hold_name: nvidia_driver
         pkg_hold_packages: "{{ provider_baremetal_driver.packages }}"
-        pkg_versions: "{{ pinka_versions.packages | pinka_lock_packages('nvidia_driver', pinka_release_key) }}"
+        pkg_versions: "{{ pinka_versions.packages | pinka_lock_packages('nvidia_driver', pinka_release_key, ansible_facts['architecture']) }}"
 
     - name: Rebuild the initramfs now
       ansible.builtin.meta: flush_handlers

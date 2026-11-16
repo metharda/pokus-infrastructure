@@ -203,7 +203,7 @@ def store_report(**changes: Any) -> dict[str, Any]:
         "aliases": [*golden, f"{imagestore.ALIAS}/1.0.1"],
         "golden": {"aliases": golden, "properties": properties},
         "left": [],
-        "server_version": "6.0.6",
+        "server_version": "6.0.7",
         **changes,
     }
 
@@ -1220,6 +1220,14 @@ def test_tailscale_pins(tmp_path: Path) -> None:
         preexisting.tailscale_pins("ubuntu", "25.04", "plucky")
     with pytest.raises(preexisting.PinError, match=r"no Tailscale version for ubuntu-20\.04"):
         preexisting.tailscale_pins("ubuntu", "20.04", "noble")
+    lock = tmp_path / "lock.yml"
+    locked = yaml.safe_load(preexisting.LOCK.read_text())
+    locked["packages"]["tailscale"]["ubuntu-24.04"] = {
+        "tailscale": {"x86_64": "1.104.1", "aarch64": "1.104.2"}
+    }
+    lock.write_text(yaml.safe_dump(locked))
+    with pytest.raises(preexisting.PinError, match=r"per architecture for ubuntu-24\.04"):
+        preexisting.tailscale_pins("ubuntu", "24.04", "noble", lock=lock)
     sources = tmp_path / "sources.yml"
     data = yaml.safe_load(preexisting.SOURCES.read_text())
     data["repositories"]["tailscale-deb"]["verify"] = "the base URL is not checked yet"
@@ -1244,18 +1252,60 @@ def record(target: str, stages: dict[str, str], day: str = "2026-01-01") -> dict
     return {"target": target, "tested_on": day, "stages": stages}
 
 
+@pytest.mark.parametrize(
+    ("bad", "message"),
+    [
+        ({"tested_on": "2026-01-01"}, "result 1 names no target"),
+        ({"target": "a"}, r"result 1 \(a\) has no tested_on date .*None"),
+        ({"target": "a", "tested_on": None}, "has no tested_on date"),
+        ({"target": "a", "tested_on": "2026-1-1"}, "has no tested_on date"),
+        ({"target": "a", "tested_on": "2026-02-30"}, "has no tested_on date"),
+        # Forms Python reads as dates that would not sort with the others.
+        ({"target": "a", "tested_on": "20260101"}, "has no tested_on date"),
+        ({"target": "a", "tested_on": "2026-W01-1"}, "has no tested_on date"),
+    ],
+)
+def test_results_file_refuses_a_record_without_target_or_date(
+    tmp_path: Path, bad: dict[str, Any], message: str
+) -> None:
+    path = tmp_path / "results.yml"
+    path.write_text(yaml.safe_dump({"schema_version": 1, "results": [bad]}), encoding="utf-8")
+    with pytest.raises(ValueError, match=message):
+        results.load(path)
+    # Unquoted, YAML reads a date: the harness always writes it quoted.
+    path.write_text("schema_version: 1\nresults:\n- {target: a, tested_on: 2026-01-01}\n")
+    with pytest.raises(ValueError, match="has no tested_on date"):
+        results.load(path)
+
+
 def test_results_file(tmp_path: Path) -> None:
     path = tmp_path / "results.yml"
     passed = dict.fromkeys(harness.STAGES, "passed")
-    results.update(path, [record("b", passed)], ["a", "b"])
-    results.update(path, [record("a", {**passed, "smoke": "failed"})], ["a", "b"])
+    results.update(path, [record("b", passed)])
+    results.update(path, [record("a", {**passed, "smoke": "failed"})])
+    # Every run is kept, oldest first; a later run of a target adds to it.
+    results.update(path, [record("b", {**passed, "smoke": "failed"}, "2026-02-01")])
     loaded = results.load(path)
-    assert [r["target"] for r in loaded] == ["a", "b"]
+    assert [(r["target"], r["tested_on"]) for r in loaded] == [
+        ("b", "2026-01-01"),
+        ("a", "2026-01-01"),
+        ("b", "2026-02-01"),
+    ]
     assert path.read_text().startswith("# Managed by pinka (tests/distros/results.yml).")
-    assert results.status(loaded[0]) == "failed: smoke"
-    assert results.status(loaded[1]) == "passed"
+    assert results.status(loaded[0]) == "passed"
+    assert results.status(loaded[1]) == "failed: smoke"
     assert results.status(None) == "not tested"
-    assert results.valid_until(loaded[1]) == "2026-04-01"
+    assert results.valid_until(loaded[0]) == "2026-04-01"
+    # The latest run of each target decides.
+    latest = results.latest(loaded)
+    assert results.status(latest["b"]) == "failed: smoke"
+    assert results.status(latest["a"]) == "failed: smoke"
+    # By date, also in a file whose order a merge changed; of runs on the same
+    # day, the one written last.
+    assert results.latest([loaded[2], loaded[0]])["b"] is loaded[2]
+    same_day = record("b", passed, "2026-02-01")
+    assert results.latest([*loaded, same_day])["b"] is same_day
+    assert results.latest([same_day, loaded[2]])["b"] is loaded[2]
     committed = results.load(INFRA / "tests" / "distros" / "results.yml")
     ids = {t.id for t in target_file().targets}
     assert {r["target"] for r in committed} <= ids
@@ -1281,6 +1331,22 @@ def test_cli_list(capsys: pytest.CaptureFixture[str]) -> None:
     assert "fedora-43" in out and "SELinux enforcing" in out
 
 
+def test_cli_list_shows_each_targets_latest_run(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / "results.yml"
+    passed = dict.fromkeys(harness.STAGES, "passed")
+    # The newest run is neither the first nor the last in the file: the list
+    # orders by date, not by place.
+    results.update(path, [record("debian-13", passed, "2026-11-01")])
+    results.update(path, [record("debian-13", {**passed, "smoke": "failed"}, "2026-11-03")])
+    results.update(path, [record("debian-13", passed, "2026-11-02")])
+    monkeypatch.setattr(cli, "RESULTS", path)
+    assert run_cli(["list"]) == 0
+    (line,) = [x for x in capsys.readouterr().out.splitlines() if x.startswith("debian-13 ")]
+    assert line.endswith("failed: smoke (2026-11-03)"), line
+
+
 def test_lab_running(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     active = lambda argv, timeout=None: Result(tuple(argv), 0, "", "")  # noqa: E731
     assert cli.lab_running(active) is Path("/etc/pinka/lab.json").exists()
@@ -1290,12 +1356,19 @@ def test_lab_running(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 
 
 NO_SLEEP = lambda _seconds: None  # noqa: E731
+PROFILE_OS = {
+    "id": "debian",
+    "version_id": "13",
+    "codename": "trixie",
+    "parent_release": "",
+    "arch": "x86_64",
+}
 PROFILE = {
     "schema_version": 1,
     "provider": None,
     "family": "debian",
     "release_model": "fixed",
-    "os": {"id": "debian", "version_id": "13", "codename": "trixie", "parent_release": ""},
+    "os": PROFILE_OS,
     "outcome": "unsupported",
     "overrides": {"force_unsupported": False},
 }
@@ -1406,15 +1479,33 @@ def test_required_play_is_the_provider_agnostic_roles() -> None:
 FEDORA_PROFILE = {
     **PROFILE,
     "family": "redhat",
-    "os": {"id": "fedora", "version_id": "44", "codename": "", "parent_release": ""},
+    "os": {
+        "id": "fedora",
+        "version_id": "44",
+        "codename": "",
+        "parent_release": "",
+        "arch": "x86_64",
+    },
 }
 
 
 def test_check_mode_extended_skips_nothing_where_every_source_is_verified() -> None:
     # make lock-pins verified Tailscale and Incus on the apt releases.
     assert checkmode.unverified_roles(PROFILE) == {}
-    ubuntu = {**PROFILE, "os": {"id": "ubuntu", "version_id": "24.04", "codename": "noble"}}
-    assert checkmode.unverified_roles(ubuntu) == {}
+    noble = {"id": "ubuntu", "version_id": "24.04", "codename": "noble"}
+    for arch in ("x86_64", "aarch64"):
+        assert checkmode.unverified_roles({**PROFILE, "os": {**noble, "arch": arch}}) == {}
+
+
+def test_check_mode_refuses_a_package_without_a_version_for_the_architecture() -> None:
+    # Zabbly's Incus has a version per architecture, Docker's one version serves any.
+    riscv = {**PROFILE, "os": {**PROFILE_OS, "arch": "riscv64"}}
+    refused = checkmode.unverified_roles(riscv)
+    assert set(refused) == {"incus"}
+    assert "for aarch64, x86_64 only, not for this host's riscv64" in refused["incus"]
+    without = {**PROFILE, "os": {k: v for k, v in PROFILE_OS.items() if k != "arch"}}
+    with pytest.raises(checkmode.CheckModeError, match=r"no architecture \(os\.arch\)"):
+        checkmode.unverified_roles(without)
 
 
 @pytest.mark.parametrize("ansible_rc", [0, 2])
@@ -1491,7 +1582,12 @@ def test_unverified_roles() -> None:
         repo = sources["repositories"].get(entry.get("repo", ""), {})
         if "verify" in entry or "verify" in repo:
             assert role in refused, role
-    rolling = {**PROFILE, "family": "archlinux", "release_model": "rolling", "os": {"id": "arch"}}
+    rolling = {
+        **PROFILE,
+        "family": "archlinux",
+        "release_model": "rolling",
+        "os": {"id": "arch", "arch": "x86_64"},
+    }
     assert all("pins" not in reason for reason in checkmode.unverified_roles(rolling).values())
     with pytest.raises(checkmode.CheckModeError, match="no release identity"):
         checkmode.unverified_roles({**PROFILE, "os": {"id": "debian", "codename": "nope"}})
@@ -1527,7 +1623,7 @@ def test_every_family_has_a_ci_image() -> None:
     lock = yaml.safe_load((INFRA / "versions.lock.yml").read_text())
     images = lock["containers"]["ci_images"]
     families = {
-        "debian": {"ubuntu_2404", "debian_13"},
+        "debian": {"ubuntu_2604", "ubuntu_2404", "debian_13"},
         "redhat": {"fedora_44", "almalinux_9"},
         "suse": {"opensuse_leap_156"},
         "archlinux": {"archlinux"},

@@ -10,6 +10,7 @@
     "tiers",
     "tier_notes",
     "release_model_notes",
+    "pending_verification_note",
     "lifecycle_sources",
     "os",
     "arch",
@@ -43,6 +44,10 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {"fast": {"$ref": "#/$defs/text"}, "rolling": {"$ref": "#/$defs/text"}}
+    },
+    "pending_verification_note": {
+      "description": "The note preflight adds for a release that is pending verification.",
+      "$ref": "#/$defs/text"
     },
     "lifecycle_sources": {"type": "object", "additionalProperties": {"$ref": "#/$defs/text"}},
     "os": {
@@ -276,7 +281,11 @@
           }
         },
         "reason": {"$ref": "#/$defs/text"},
-        "note": {"$ref": "#/$defs/text"}
+        "note": {"$ref": "#/$defs/text"},
+        "pending_verification": {
+          "description": "The release is shown as pending verification unless the latest make test-distros run of each of its targets passed every stage; the generator decides it from tests/distros/results.yml.",
+          "type": "boolean"
+        }
       },
       "if": {"properties": {"tier": {"const": "unsupported"}}},
       "then": {"required": ["reason"]},

@@ -119,6 +119,17 @@ UBUNTU_2404 = os_release(
     ID_LIKE="debian",
     UBUNTU_CODENAME="noble",
 )
+# Ubuntu 26.04 LTS; its release kernel is 7.0.0-14-generic (linux-generic
+# 7.0.0-14.14 in resolute main).
+UBUNTU_2604 = os_release(
+    PRETTY_NAME="Ubuntu 26.04 LTS",
+    NAME="Ubuntu",
+    VERSION_ID="26.04",
+    VERSION_CODENAME="resolute",
+    ID="ubuntu",
+    ID_LIKE="debian",
+    UBUNTU_CODENAME="resolute",
+)
 DEBIAN_13 = os_release(
     PRETTY_NAME="Debian GNU/Linux 13 (trixie)",
     VERSION_ID="13",
@@ -849,6 +860,27 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             "features": FULL_FEATURES,
         },
     )
+    # Supported by its rules and pending verification until the latest
+    # make test-distros run of each of its targets passed every stage (the
+    # compiled matrix).
+    fx["ubuntu2604-baremetal"] = build(
+        UBUNTU_2604,
+        system(kernel="7.0.0-14-generic"),
+        apparmor,
+        baremetal(),
+        kvm(),
+        nvidia_pci("loaded"),
+        expected={
+            "outcome": "supported",
+            "provider": "baremetal",
+            "tier": "supported",
+            "pending_verification": True,
+            "family": "debian",
+            "env_class": "baremetal",
+            "features": FULL_FEATURES,
+            "notes_contain": ["Pending verification: no make test-distros run of this release"],
+        },
+    )
     fx["ubuntu2404-baremetal-nvidia-old-driver"] = build(
         *base_ubuntu,
         baremetal(),
@@ -960,8 +992,10 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
         nvidia_pci("none", devid=RTX_2080_TI_DEVID),
         expected={**supported_gpu, "provider": "baremetal", "family": "debian"},
     )
-    # One per family: the list belongs to the driver release, not the distribution.
+    # One per family (two for redhat), and Ubuntu 26.04: the list belongs to the
+    # driver release, not the distribution.
     for name, layers, family in (
+        ("ubuntu2604", [UBUNTU_2604, system(kernel="7.0.0-14-generic"), apparmor], "debian"),
         ("debian13", [DEBIAN_13, system(kernel="6.12.48+deb13-amd64"), apparmor], "debian"),
         (
             "fedora",

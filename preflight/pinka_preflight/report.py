@@ -143,6 +143,7 @@ def build_report(
         "exit_code": decision.exit_code,
         "tier": decision.tier,
         "os_tier": decision.os_tier,
+        "pending_verification": decision.pending_verification,
         "arch_tier": decision.arch_tier,
         "release_model": decision.release_model,
         "family": decision.family,

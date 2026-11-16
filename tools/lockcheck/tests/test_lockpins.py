@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import copy
 import datetime as dt
 import gzip
 import hashlib
@@ -43,6 +44,8 @@ def armored(packet: bytes) -> bytes:
 ZABBLY = public_key_packet(b"zabbly")
 TAILSCALE = public_key_packet(b"tailscale")
 UBUNTU = public_key_packet(b"ubuntu archive")
+DOCKER = public_key_packet(b"docker")
+CTK = public_key_packet(b"nvidia container toolkit")
 ZABBLY_FP = openpgp.primary_fingerprints(ZABBLY)[0]
 TAILSCALE_FP = openpgp.primary_fingerprints(TAILSCALE)[0]
 
@@ -76,12 +79,24 @@ def in_release(files: Mapping[str, bytes], components: str = "main") -> bytes:
 
 
 def apt_repo(
-    base: str, versions: Mapping[str, Mapping[str, list[str]]], **kwargs: str
+    base: str,
+    versions: Mapping[str, Mapping[str, list[str]]],
+    component: str = "main",
+    **kwargs: str,
 ) -> dict[str, bytes]:
-    files = {f"main/binary-{arch}/Packages.gz": packages_index(versions[arch]) for arch in versions}
+    files = {
+        f"{component}/binary-{arch}/Packages.gz": packages_index(versions[arch])
+        for arch in versions
+    }
     out = {f"{base}/{path}": data for path, data in files.items()}
-    out[f"{base}/InRelease"] = in_release(files, **kwargs)
+    out[f"{base}/InRelease"] = in_release(files, **{"components": component, **kwargs})
     return out
+
+
+def flat_repo(base: str, versions: Mapping[str, list[str]]) -> dict[str, bytes]:
+    """A flat repository (suite ``/``): the index next to its release file."""
+    files = {"Packages.gz": packages_index(versions)}
+    return {f"{base}/Packages.gz": files["Packages.gz"], f"{base}/InRelease": in_release(files)}
 
 
 SOURCES: dict[str, Any] = yaml.safe_load((ROOT / "ansible" / "component-sources.yml").read_text())
@@ -94,6 +109,9 @@ LOCK: dict[str, Any] = yaml.safe_load((ROOT / "versions.lock.yml").read_text())
 # Turing and Ada with the open module, Pascal with the proprietary one only,
 # Kepler only in the legacy branch.
 DRIVER = {r: p for r, p in LOCK["packages"]["nvidia_driver"].items() if r.startswith("ubuntu-")}
+UBUNTU_CODENAMES = {"ubuntu-26.04": "resolute", "ubuntu-24.04": "noble", "ubuntu-22.04": "jammy"}
+DOCKER_PACKAGES = tuple(SOURCES["components"]["docker"]["ubuntu"]["packages"])
+CTK_PACKAGES = tuple(SOURCES["components"]["nvidia_container_toolkit"]["ubuntu"]["packages"])
 DRIVER_VERSION = nvidia_gpus.upstream_version(next(iter(DRIVER["ubuntu-24.04"].values())))
 SUPPORTED_GPUS = json.dumps(
     {
@@ -114,6 +132,20 @@ README = (
 
 def modaliases(*ids: str) -> str:
     return "nvidia(" + ", ".join(f"pci:v000010DEd0000{i}sv*sd*bc03sc*i*" for i in ids) + ")"
+
+
+def ubuntu_suites(codename: str) -> dict[str, bytes]:
+    """The restricted indexes of ``<codename>-security`` and ``<codename>``: an older driver."""
+    out = {}
+    for suite in (f"{codename}-security", codename):
+        index = gzip.compress(
+            b"Package: nvidia-driver-580-open\nVersion: 580.0-0ubuntu1\n", mtime=0
+        )
+        files = {"restricted/binary-amd64/Packages.gz": index}
+        base = f"{lockpins.UBUNTU_ARCHIVE}/dists/{suite}"
+        out[f"{base}/restricted/binary-amd64/Packages.gz"] = index
+        out[f"{base}/InRelease"] = in_release(files, components="main restricted")
+    return out
 
 
 def ubuntu_restricted(
@@ -166,9 +198,30 @@ class World:
         )
         for fp, packet in ((ZABBLY_FP, ZABBLY), (TAILSCALE_FP, TAILSCALE)):
             self.files[lockpins.KEYSERVER.format(fingerprint=fp)] = armored(packet)
-        codenames = {"ubuntu-24.04": "noble", "ubuntu-22.04": "jammy", "debian-13": "trixie"}
+        for name, packet in (("docker-deb", DOCKER), ("nvidia-container-toolkit", CTK)):
+            self.files[LOCK["repository_keys"]["keys"][name]["urls"][0]] = armored(packet)
+        for arch in ("amd64", "arm64"):
+            self.files.update(
+                flat_repo(
+                    f"https://nvidia.github.io/libnvidia-container/stable/deb/{arch}",
+                    {p: ["1.20.0-1", "1.20.1-1"] for p in CTK_PACKAGES},
+                )
+            )
+        codenames = {
+            "ubuntu-26.04": "resolute",
+            "ubuntu-24.04": "noble",
+            "ubuntu-22.04": "jammy",
+            "debian-13": "trixie",
+        }
         for release, codename in codenames.items():
             distro = release.split("-")[0]
+            self.files.update(
+                apt_repo(
+                    f"https://download.docker.com/linux/{distro}/dists/{codename}",
+                    {arch: {p: ["1", "2"] for p in DOCKER_PACKAGES} for arch in ("amd64", "arm64")},
+                    component="stable",
+                )
+            )
             build = {"amd64": "202603272003", "arm64": "202603272249"}
             self.files.update(
                 apt_repo(
@@ -185,8 +238,9 @@ class World:
                     {arch: {"tailscale": ["1.104.0", "1.104.1"]} for arch in ("amd64", "arm64")},
                 )
             )
-        for release, codename in (("ubuntu-24.04", "noble"), ("ubuntu-22.04", "jammy")):
+        for release, codename in UBUNTU_CODENAMES.items():
             self.files.update(ubuntu_restricted(release, codename))
+            self.files.update(ubuntu_suites(codename))
         self.files[nvidia_gpus.README_URL.format(version=DRIVER_VERSION)] = README.encode()
         self.registry["tags/list"] = (
             {},
@@ -290,11 +344,15 @@ class World:
         raise net.FetchError(f"{path}: HTTP 404")
 
     def network(self) -> lockpins.Network:
-        trusted = {ZABBLY, TAILSCALE, UBUNTU}
+        trusted = {ZABBLY, TAILSCALE, UBUNTU, DOCKER, CTK}
 
-        def gpgv(keyring: bytes, signed: bytes) -> None:
+        def gpgv(keyring: bytes, signed: bytes) -> str:
             if keyring not in trusted or b"tampered" in signed:
                 raise lockpins.PinError("BAD signature")
+            # As gpgv: the signed block wherever it is, its text alone as the output.
+            block = signed.decode().split("-----BEGIN PGP SIGNED MESSAGE-----\n", 1)[1]
+            body = block.split("\n\n", 1)[1]
+            return body.split("\n-----BEGIN PGP SIGNATURE-----", 1)[0] + "\n"
 
         def read_file(path: str) -> bytes:
             assert path == lockpins.UBUNTU_KEYRING
@@ -316,8 +374,23 @@ def child(entry: Mapping[str, Any], arch: str) -> str:
     return "sha256:" + hashlib.sha256(f"{entry['digest']}/{arch}".encode()).hexdigest()
 
 
-def run(world: World) -> tuple[str, list[str]]:
-    return lockpins.run(LOCK, SOURCES, FACTS, world.network(), NOW)
+def pinned_lock() -> dict[str, Any]:
+    """The lock with the fake world's keys and its newest versions pinned."""
+    lock = copy.deepcopy(LOCK)
+    keys = lock["repository_keys"]["keys"]
+    keys["docker-deb"]["fingerprint"] = openpgp.primary_fingerprints(DOCKER)[0]
+    keys["nvidia-container-toolkit"]["fingerprint"] = openpgp.primary_fingerprints(CTK)[0]
+    pins = lock["packages"]
+    for release in ("ubuntu-26.04", "ubuntu-24.04", "ubuntu-22.04", "debian-13"):
+        pins["docker"][release] = dict.fromkeys(DOCKER_PACKAGES, "2")
+        pins["nvidia_container_toolkit"][release] = dict.fromkeys(CTK_PACKAGES, "1.20.1-1")
+        pins["incus"][release] = {"incus": "1:6.0.6-x-202603272003"}
+        pins["tailscale"][release] = {"tailscale": "1.104.1"}
+    return lock
+
+
+def run(world: World, lock: Mapping[str, Any] | None = None) -> tuple[str, list[str]]:
+    return lockpins.run(lock or pinned_lock(), SOURCES, FACTS, world.network(), NOW)
 
 
 # --- Debian versions ----------------------------------------------------------------------------
@@ -392,9 +465,17 @@ def sources_of(component: str, release: str) -> lockpins.AptSource:
 
 def test_the_apt_releases_come_from_the_lock_and_the_component_sources() -> None:
     found = {(s.component, s.release, s.repo_name) for s in lockpins.apt_sources(LOCK, SOURCES)}
+    releases = ("ubuntu-26.04", "ubuntu-24.04", "ubuntu-22.04", "debian-13")
     assert found == {
-        ("incus", r, "zabbly-incus-lts") for r in ("ubuntu-24.04", "ubuntu-22.04", "debian-13")
-    } | {("tailscale", r, "tailscale-deb") for r in ("ubuntu-24.04", "ubuntu-22.04", "debian-13")}
+        (component, r, repo)
+        for component, repo in (
+            ("docker", "docker-deb"),
+            ("nvidia_container_toolkit", "nvidia-container-toolkit-deb"),
+            ("incus", "zabbly-incus-lts"),
+            ("tailscale", "tailscale-deb"),
+        )
+        for r in releases
+    }
 
 
 def test_the_newest_version_of_each_architecture_is_read_from_the_signed_index() -> None:
@@ -417,6 +498,7 @@ def test_the_newest_version_of_each_architecture_is_read_from_the_signed_index()
         ("index", "InRelease says"),
         ("component", "names no component 'main'"),
         ("package", "has no package incus"),
+        ("injected", "InRelease says"),
     ],
 )
 def test_a_repository_that_does_not_check_out_is_refused(change: str, message: str) -> None:
@@ -432,6 +514,18 @@ def test_a_repository_that_does_not_check_out_is_refused(change: str, message: s
             for p in ("main/binary-amd64/Packages.gz", "main/binary-arm64/Packages.gz")
         }
         world.files[f"{base}/InRelease"] = in_release(files, components="contrib")
+    elif change == "injected":
+        # Unsigned text before the signed block, with a hash of its own for
+        # another index: what gpgv verified decides, so the index is refused.
+        evil = packages_index({"incus": ["9:evil"]})
+        world.files[f"{base}/main/binary-amd64/Packages.gz"] = evil
+        world.files[f"{base}/InRelease"] = (
+            in_release({"main/binary-amd64/Packages.gz": evil}).split(b"-----BEGIN PGP SIGNED")[0]
+            + b"Components: main\nSHA256:\n "
+            + hashlib.sha256(evil).hexdigest().encode()
+            + b" 1 main/binary-amd64/Packages.gz\n\n"
+            + world.files[f"{base}/InRelease"]
+        )
     else:
         world.files.update(apt_repo(base, {a: {"other": ["1"]} for a in ("amd64", "arm64")}))
     key = lockpins.pin_key(world.network(), "zabbly")
@@ -497,8 +591,6 @@ def test_github_keys_whose_published_fingerprint_differs_are_refused() -> None:
 
 # --- the GPU list of the NVIDIA driver ---------------------------------------------------------
 
-UBUNTU_CODENAMES = {"ubuntu-24.04": "noble", "ubuntu-22.04": "jammy"}
-
 
 def test_the_gpu_list_is_pinned_from_the_signed_index_and_cross_checked() -> None:
     (pin,) = lockpins.pin_nvidia_gpus(World().network(), LOCK, UBUNTU_CODENAMES)
@@ -523,6 +615,7 @@ def test_the_gpu_list_is_pinned_from_the_signed_index_and_cross_checked() -> Non
         ("readme-turing", "no longer states which GPUs"),
         ("package", "the index says otherwise"),
         ("signature", "BAD signature"),
+        ("injected", "InRelease says"),
     ],
 )
 def test_a_gpu_list_that_does_not_check_out_is_refused(change: str, message: str) -> None:
@@ -538,6 +631,17 @@ def test_a_gpu_list_that_does_not_check_out_is_refused(change: str, message: str
     elif change == "package":
         deb = next(u for u in world.files if u.endswith(".deb") and "24.04" in u)
         world.files[deb] += b"tampered"
+    elif change == "injected":
+        # Unsigned text before the signed block, stating another index's hash.
+        index = noble.replace("InRelease", "restricted/binary-amd64/Packages.gz")
+        evil = gzip.compress(b"Package: nvidia-driver-580-open\nVersion: 9:evil\n", mtime=0)
+        world.files[index] = evil
+        world.files[noble] = (
+            b"SHA256:\n "
+            + hashlib.sha256(evil).hexdigest().encode()
+            + b" 1 restricted/binary-amd64/Packages.gz\n\n"
+            + world.files[noble]
+        )
     else:
         world.files[noble] += b"tampered"
     with pytest.raises(lockpins.PinError, match=message):
@@ -589,8 +693,16 @@ def test_the_run_prints_every_section_in_the_lock_format() -> None:
         "urls": list(lockpins.KEY_URLS["zabbly"]),
         "fingerprint": ZABBLY_FP,
     }
-    assert blocks["packages.incus"]["ubuntu-24.04"] == {"incus": "1:6.0.6-x-202603272003"}
+    # Zabbly's builds differ per architecture: a version for each; Tailscale's do not.
+    assert blocks["packages.incus"]["ubuntu-24.04"] == {
+        "incus": {"x86_64": "1:6.0.6-x-202603272003", "aarch64": "1:6.0.6-x-202603272249"}
+    }
     assert blocks["packages.tailscale"]["debian-13"] == {"tailscale": "1.104.1"}
+    incus = text.split("# --- packages.incus ", 1)[1].split("# --- ", 1)[0]
+    assert incus.count("# a version per architecture for incus: the builds differ") == 4
+    tailscale = text.split("# --- packages.tailscale ", 1)[1].split("# --- ", 1)[0]
+    assert "the same versions on x86_64 and aarch64" in tailscale
+    assert "per architecture" not in tailscale
     assert blocks["containers.images.dcgm_exporter"]["dcgm_exporter"]["tag"] == "4.8.10"
     sizes = blocks["containers.images.<name>.sizes"]
     assert set(sizes) == set(LOCK["containers"]["images"])
@@ -603,7 +715,6 @@ def test_the_run_prints_every_section_in_the_lock_format() -> None:
     }
     assert set(blocks["github_ssh_host_keys.keys"]) == set(lockpins.SSH_KEY_TYPES)
     assert blocks["nvidia_driver_gpus.releases"][DRIVER_VERSION]["open_module"] == ["1E04", "2786"]
-    assert "aarch64 hosts cannot install it" in text  # Zabbly's builds differ per architecture
     assert text.startswith("# make lock-pins 2026-10-17T12:00:00Z")
 
 
@@ -614,22 +725,29 @@ def test_a_section_that_cannot_be_pinned_is_named_and_the_rest_is_printed() -> N
     assert [f.split(":")[0] for f in failed] == [
         "repository_keys.keys.zabbly",
         "packages.incus.ubuntu-24.04",
+        "packages.incus.ubuntu-26.04",
         "packages.incus.ubuntu-22.04",
         "packages.incus.debian-13",
         "github_ssh_host_keys",
     ]
     assert "# zabbly: NOT PINNED" in text
     assert 'ubuntu-24.04: {tailscale: "1.104.1"}' in text
-    assert "# 5 section(s) not pinned" in text
+    assert "# 6 section(s) not pinned" in text
 
 
 # --- gpgv, for real ---------------------------------------------------------------------------
 
 
 @pytest.mark.skipif(shutil.which("gpg") is None or shutil.which("gpgv") is None, reason="needs gpg")
-def test_the_signature_check_runs_gpgv_with_only_the_pinned_key(tmp_path: Path) -> None:
+def test_the_signature_check_runs_gpgv_with_only_the_pinned_key(
+    tmp_path: Path, request: pytest.FixtureRequest
+) -> None:
     env = {**os.environ, "GNUPGHOME": str(tmp_path)}
     tmp_path.chmod(0o700)
+    # gpg starts an agent for the key; stop it with the test.
+    request.addfinalizer(
+        lambda: subprocess.run(["gpgconf", "--kill", "gpg-agent"], env=env, check=False)  # noqa: S607
+    )
 
     def gpg(*args: str, data: bytes | None = None) -> bytes:
         return subprocess.run(  # noqa: S603 - fixed arguments
@@ -643,7 +761,10 @@ def test_the_signature_check_runs_gpgv_with_only_the_pinned_key(tmp_path: Path) 
     gpg("--quick-gen-key", "Test Repository <repo@example.com>", "ed25519", "sign", "never")
     signed = gpg("--clearsign", data=b"Suite: test\n")
     keyring = gpg("--export")
-    lockpins._gpgv(keyring, signed)
+    assert lockpins._gpgv(keyring, signed) == "Suite: test\n"
+    # Unsigned text before the signed block is not in what is read.
+    assert lockpins._gpgv(keyring, b"Suite: evil\n\n" + signed) == "Suite: test\n"
+    assert lockpins._gpgv(keyring, signed + b"Suite: evil\n") == "Suite: test\n"
     with pytest.raises(lockpins.PinError, match="does not verify"):
         lockpins._gpgv(keyring, signed.replace(b"Suite: test", b"Suite: evil"))
     other = public_key_packet(b"another key")
@@ -662,3 +783,234 @@ def test_make_lock_pins_runs_the_tool_and_is_documented() -> None:
     assert "make lock-pins" in page
     # The wheel shortcut of one development environment is no documented path.
     assert "ansible-14.4.0-py3-none-any.whl" not in page
+
+
+# --- every apt pin: Docker, the Toolkit's flat repository, the driver, pins gone ---------------
+
+
+def blocks_of(text: str) -> dict[str, Any]:
+    out = {}
+    for block in text.split("# --- ")[1:]:
+        header, _, body = block.partition("\n")
+        out[header.split(" ")[0]] = yaml.safe_load(body)
+    return out
+
+
+def test_docker_the_toolkit_and_the_driver_are_pinned_from_their_signed_indexes() -> None:
+    world = World()
+    world.set_meta()
+    text, failed = run(world)
+    assert failed == []
+    blocks = blocks_of(text)
+    assert blocks["packages.docker"]["ubuntu-26.04"] == dict.fromkeys(DOCKER_PACKAGES, "2")
+    assert blocks["packages.docker"]["debian-13"] == dict.fromkeys(DOCKER_PACKAGES, "2")
+    assert blocks["packages.nvidia_container_toolkit"]["ubuntu-24.04"] == dict.fromkeys(
+        CTK_PACKAGES, "1.20.1-1"
+    )
+    # The flat repository: one release file per architecture, its URI naming it.
+    for arch in ("amd64", "arm64"):
+        base = f"https://nvidia.github.io/libnvidia-container/stable/deb/{arch}"
+        assert f"{base}/Packages.gz sha256 " in text
+    # The driver: the newest version in Ubuntu's restricted pocket, -updates first.
+    driver = blocks["packages.nvidia_driver"]
+    assert set(driver) == set(UBUNTU_CODENAMES)
+    for release, pinned in DRIVER.items():
+        assert driver[release] == pinned
+    assert "resolute-security restricted: InRelease signed by the Ubuntu archive keyring" in text
+
+
+def test_a_pinned_version_gone_from_its_index_is_reported() -> None:
+    world = World()
+    world.set_meta()
+    lock = pinned_lock()
+    lock["packages"]["incus"]["ubuntu-24.04"] = {"incus": "1:6.0.5-x-old"}
+    lock["packages"]["nvidia_driver"]["ubuntu-26.04"] = {"nvidia-driver-580-open": "570.1-0"}
+    text, failed = run(world, lock)
+    gone = [f for f in failed if "no longer in its index" in f]
+    assert gone == [
+        "packages.incus.ubuntu-24.04: the pinned incus 1:6.0.5-x-old is no longer in its index;"
+        " apt cannot install it",
+        "packages.nvidia_driver.ubuntu-26.04: the pinned nvidia-driver-580-open 570.1-0 is no"
+        " longer in its index; apt cannot install it",
+    ]
+    assert "# NOT IN THE INDEX: packages.incus.ubuntu-24.04" in text
+    # Counted on their own; the one section not pinned is the GPU list of the
+    # driver version the lock now names.
+    assert "# 2 pinned version(s) not in their index; see the NOT IN THE INDEX lines" in text
+    assert "# 1 section(s) not pinned; see the NOT PINNED lines" in text
+    assert [f.split(":")[0] for f in failed if lockpins.GONE not in f] == ["nvidia_driver_gpus"]
+    # The new pin is still printed for the maintainer to paste.
+    assert blocks_of(text)["packages.incus"]["ubuntu-24.04"] == {
+        "incus": {"x86_64": "1:6.0.6-x-202603272003", "aarch64": "1:6.0.6-x-202603272249"}
+    }
+
+
+def test_a_version_per_architecture_is_looked_up_in_its_architecture() -> None:
+    world = World()
+    world.set_meta()
+    lock = pinned_lock()
+    # Listed for its own architecture only: not gone.
+    lock["packages"]["incus"]["ubuntu-24.04"] = {
+        "incus": {"x86_64": "1:6.0.6-x-202603272003", "aarch64": "1:6.0.6-x-202603272249"}
+    }
+    # The aarch64 version gone (and listed for amd64 only), the x86_64 one still there.
+    lock["packages"]["incus"]["debian-13"] = {
+        "incus": {"x86_64": "1:6.0.6-x-202603272003", "aarch64": "1:6.0.6-x-202603272003"}
+    }
+    # A package's one version is looked up for x86_64 only: the aarch64 build differs.
+    lock["packages"]["incus"]["ubuntu-22.04"] = {"incus": "1:6.0.6-x-202603272003"}
+    # A marked version is left to the marker check.
+    lock["packages"]["incus"]["ubuntu-26.04"] = {
+        "incus": {"x86_64": "1:6.0.6-x-202603272003", "aarch64": "TODO(verify)"}
+    }
+    text, failed = run(world, lock)
+    assert failed == [
+        "packages.incus.debian-13: the pinned incus (aarch64) 1:6.0.6-x-202603272003 is no"
+        " longer in its index; apt cannot install it"
+    ]
+    assert text.count("# NOT IN THE INDEX: ") == 1
+
+
+def test_package_pins_render_one_version_or_one_per_architecture() -> None:
+    versions = {
+        "x86_64": {"incus": "1:6.0.7-a", "incus-client": "2"},
+        "aarch64": {"incus": "1:6.0.7-b", "incus-client": "2"},
+    }
+    rendered = lockpins.render_package_pins(versions)
+    assert rendered == 'incus: {x86_64: "1:6.0.7-a", aarch64: "1:6.0.7-b"}, incus-client: "2"'
+    assert yaml.safe_load(f"{{{rendered}}}") == {
+        "incus": {"x86_64": "1:6.0.7-a", "aarch64": "1:6.0.7-b"},
+        "incus-client": "2",
+    }
+
+
+def test_a_marked_pin_and_a_package_outside_the_layout_are_not_reported_gone() -> None:
+    world = World()
+    world.set_meta()
+    # Zabbly's noble index also lists a package the layout does not install.
+    world.files.update(
+        apt_repo(
+            "https://pkgs.zabbly.com/incus/lts-6.0/dists/noble",
+            {
+                arch: {"incus": ["1:6.0.6-x-202603272003"], "incus-extra": ["7"]}
+                for arch in ("amd64", "arm64")
+            },
+        )
+    )
+    lock = pinned_lock()
+    lock["packages"]["incus"]["ubuntu-24.04"] = {
+        "incus": "1:6.0.6-x-202603272003",
+        "incus-extra": "7",
+    }
+    lock["packages"]["docker"]["ubuntu-26.04"]["docker-ce"] = "TODO(verify)"
+    text, failed = run(world, lock)
+    assert failed == []
+    assert "NOT IN THE INDEX" not in text
+
+
+def restricted_suite(world: World, suite: str, stanzas: str) -> None:
+    """Replace a suite's signed restricted index of Ubuntu's archive."""
+    index = gzip.compress(stanzas.encode(), mtime=0)
+    base = f"{lockpins.UBUNTU_ARCHIVE}/dists/{suite}"
+    world.files[f"{base}/restricted/binary-amd64/Packages.gz"] = index
+    world.files[f"{base}/InRelease"] = in_release(
+        {"restricted/binary-amd64/Packages.gz": index}, components="main restricted"
+    )
+
+
+def test_the_driver_is_the_newest_over_its_three_suites() -> None:
+    (pinned,) = DRIVER["ubuntu-26.04"].values()
+    for suite in ("resolute-security", "resolute"):
+        world = World()
+        world.set_meta()
+        restricted_suite(world, suite, "Package: nvidia-driver-580-open\nVersion: 580.999-0\n")
+        text, failed = run(world)
+        driver = blocks_of(text)["packages.nvidia_driver"]["ubuntu-26.04"]
+        assert driver == {"nvidia-driver-580-open": "580.999-0"}, suite
+        # Still listed: the lock's version is not gone.
+        assert failed == [], suite
+        assert pinned != "580.999-0"
+
+
+def test_a_driver_package_in_no_suite_or_a_suite_that_fails_is_not_pinned() -> None:
+    world = World()
+    world.set_meta()
+    lock = pinned_lock()
+    lock["packages"]["nvidia_driver"]["ubuntu-22.04"] = {"nvidia-driver-999-open": "1"}
+    # resolute-security's index no longer matches the hash its release file states.
+    security = (
+        f"{lockpins.UBUNTU_ARCHIVE}/dists/resolute-security/restricted/binary-amd64/Packages.gz"
+    )
+    world.files[security] = gzip.compress(b"Package: other\nVersion: 1\n", mtime=0)
+    text, failed = run(world, lock)
+    driver = [f for f in failed if f.startswith("packages.nvidia_driver.")]
+    # In the lock's order: 24.04, 22.04, 26.04.
+    assert [f.split(":")[0] for f in driver] == [
+        "packages.nvidia_driver.ubuntu-22.04",
+        "packages.nvidia_driver.ubuntu-26.04",
+    ]
+    assert "resolute-security/restricted/binary-amd64/Packages.gz has SHA256" in driver[1]
+    assert any("has no package nvidia-driver-999-open" in f for f in driver)
+    assert "# ubuntu-26.04: NOT PINNED:" in text
+    assert "NOT IN THE INDEX" not in text
+
+
+def test_the_tools_key_urls_are_the_locks() -> None:
+    for name, urls in lockpins.KEY_URLS.items():
+        assert list(urls) == LOCK["repository_keys"]["keys"][name]["urls"], name
+
+
+def test_a_key_the_lock_does_not_pin_is_not_pinned_and_named() -> None:
+    world = World()
+    with pytest.raises(lockpins.PinError, match="the lock pins no key nope with a URL"):
+        lockpins.lock_key(world.network(), LOCK, "nope")
+
+
+def test_a_vendor_key_is_the_lock_s_own_and_its_fingerprint_is_checked() -> None:
+    world = World()
+    world.set_meta()
+    world.files[LOCK["repository_keys"]["keys"]["docker-deb"]["urls"][0]] = armored(TAILSCALE)
+    text, failed = run(world)
+    docker = [f for f in failed if f.startswith("packages.docker.")]
+    assert len(docker) == 4
+    assert f"holds {TAILSCALE_FP}, the lock pins " in docker[0]
+    assert "# ubuntu-26.04: NOT PINNED:" in text
+
+
+def test_every_component_a_repository_names_is_read() -> None:
+    world = World()
+    base = "https://pkgs.zabbly.com/incus/lts-6.0/dists/noble"
+    world.files.update(
+        {
+            f"{base}/main/binary-{arch}/Packages.gz": packages_index({"incus": ["1"]})
+            for arch in ("amd64", "arm64")
+        }
+    )
+    world.files.update(
+        {
+            f"{base}/extra/binary-{arch}/Packages.gz": packages_index({"incus-ui": ["2"]})
+            for arch in ("amd64", "arm64")
+        }
+    )
+    files = {
+        p: world.files[f"{base}/{p}"]
+        for p in (
+            "main/binary-amd64/Packages.gz",
+            "main/binary-arm64/Packages.gz",
+            "extra/binary-amd64/Packages.gz",
+            "extra/binary-arm64/Packages.gz",
+        )
+    }
+    world.files[f"{base}/InRelease"] = in_release(files, components="main extra")
+    source = sources_of("incus", "ubuntu-24.04")
+    two = lockpins.AptSource(
+        source.component,
+        source.release,
+        source.repo_name,
+        {**source.repo, "components": ["main", "extra"]},
+        ("incus", "incus-ui"),
+    )
+    key = lockpins.pin_key(world.network(), "zabbly")
+    pin = lockpins.pin_packages(world.network(), two, "noble", key)
+    assert pin.versions["x86_64"] == {"incus": "1", "incus-ui": "2"}
+    assert len(pin.index) == 4

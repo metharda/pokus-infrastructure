@@ -1,12 +1,13 @@
-"""unittest with the CI skip list: the Python 3.9 runs of ``make test-py39``.
+"""unittest with the CI skip list: the unittest runs of ``make test-py39`` and ``make test-py314``.
 
 ``python -m pinka_repo_checks.unittest_run --prefix <dir> discover -s <start>
 -t <top>`` or ``... --prefix <dir> <module> ...`` runs the tests like ``python
 -m unittest`` (the same output, which the gate counts), then names every
 skipped test with its reason (:func:`pinka_repo_checks.ci_skips.line`). Test
 ids take the form of pytest's (``<dir>/<module>.py::<Class>::<test>``), so the
-CI skip list names a test the same way for both runs. In CI (``CI=true``) a
-skip that the list does not name for the ``py39`` run fails the run.
+CI skip list names a test the same way for both runs. ``--run`` names the run
+(``py39``, the default, or ``py314``); in CI (``CI=true``) a skip that the list
+does not name for that run fails it.
 
 ``--junit-xml <file>`` also writes every test's result as JUnit XML, with the
 class names and test names pytest's ``--junitxml`` gives the same test, so CI
@@ -30,6 +31,9 @@ from typing import Any
 from pinka_repo_checks import ci_skips
 
 RUN = "py39"
+# The unittest runs: the oldest Python the code supports, and the newest
+# supported distribution's (Ubuntu 26.04's 3.14).
+RUNS = (RUN, "py314")
 FIXTURE_RE = re.compile(r"^(?P<fixture>\w+) \((?P<owner>[\w.]+)\)$")
 
 
@@ -109,7 +113,11 @@ class TimedResult(unittest.TextTestResult):
 
 
 def junit(
-    tests: Sequence[unittest.TestCase], result: TimedResult, prefix: str, seconds: float
+    tests: Sequence[unittest.TestCase],
+    result: TimedResult,
+    prefix: str,
+    seconds: float,
+    run: str = RUN,
 ) -> ET.ElementTree:
     """The run as JUnit XML, in the form of pytest's ``--junitxml``.
 
@@ -118,6 +126,7 @@ def junit(
         result: The run's result.
         prefix: The test directory relative to the repository root.
         seconds: How long the run took.
+        run: The run's name, the test suite's name with the prefix.
 
     Returns:
         ``<testsuites><testsuite>`` with one ``<testcase>`` per test. An error
@@ -150,7 +159,7 @@ def junit(
     for test in tests:
         if test.id() not in result.seconds and test.id() not in outcomes:
             note(test, "error", "not run: a class or module fixture failed", "")
-    suite = ET.Element("testsuite", name=f"{RUN} {prefix}", time=f"{seconds:.3f}")
+    suite = ET.Element("testsuite", name=f"{run} {prefix}", time=f"{seconds:.3f}")
     counts = {"tests": 0, "failures": 0, "errors": 0, "skipped": 0}
     for test in [*tests, *extra]:
         classname, name = junit_names(test, prefix)
@@ -210,6 +219,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--skip-list", type=Path, default=ci_skips.LIST, help="the CI skip list")
     parser.add_argument("--junit-xml", type=Path, help="also write every result as JUnit XML")
     parser.add_argument(
+        "--run", choices=RUNS, default=RUN, help="the run, as the CI skip list names it"
+    )
+    parser.add_argument(
         "names", nargs=argparse.REMAINDER, help="discover -s START -t TOP, or test names"
     )
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
@@ -222,14 +234,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.junit_xml is not None:
         assert isinstance(result, TimedResult)  # noqa: S101 - the runner's result class
         args.junit_xml.parent.mkdir(parents=True, exist_ok=True)
-        tree = junit(tests, result, args.prefix, time.monotonic() - start)
+        tree = junit(tests, result, args.prefix, time.monotonic() - start, args.run)
         tree.write(args.junit_xml, encoding="utf-8", xml_declaration=True)
     skipped = [(test_id(test, args.prefix), reason) for test, reason in result.skipped]
     for test, reason in skipped:
         print(ci_skips.line(test, reason))
     refused = []
     if ci_skips.in_ci():
-        allowed = ci_skips.allowed(RUN, args.skip_list)
+        allowed = ci_skips.allowed(args.run, args.skip_list)
         refused = [(test, reason) for test, reason in skipped if test not in allowed]
     for test, reason in refused:
         print(f"FAILED: {ci_skips.refusal(test, reason)}")

@@ -60,8 +60,10 @@ doctor_store_containers:
   pinka-loki: loki
   pinka-tempo: tempo
   pinka-grafana: grafana
+# The GPU exporter's container runs the exporter observability_gpu_exporter
+# names: the nvidia-smi exporter's image or the DCGM exporter's.
 doctor_gpu_containers:
-  pinka-gpu-exporter: gpu_exporter
+  pinka-gpu-exporter: "{{ 'dcgm_exporter' if observability_gpu_exporter == 'dcgm' else 'gpu_exporter' }}"
 doctor_container_keys: >-
   {{ (doctor_core_containers if doctor_runs_lab else {})
      | combine(doctor_observability_containers,

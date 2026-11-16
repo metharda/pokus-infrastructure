@@ -30,6 +30,11 @@ argument_specs:
         type: bool
         default: false
         description: Run the project's GPU services (profile gpu-cdi or gpu-runtime after the method Docker offers).
+      compose_gpu_profile:
+        type: str
+        default: gpu
+        choices: [gpu, dcgm]
+        description: The GPU profile's name before the method (gpu, or dcgm for the observability project's DCGM exporter).
       compose_log_max_size:
         type: str
         default: "{{ pinka_container_log_max_size }}"

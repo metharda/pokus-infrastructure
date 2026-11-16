@@ -2016,3 +2016,29 @@ def test_a_vm_blueprint_is_offered_only_where_vm_targets_work(
     drive(installer, flow)
     assert "base" in seen
     assert ("vm-desk" in seen) is offered
+
+
+@pytest.mark.parametrize(
+    ("fixture", "shown"),
+    [
+        (
+            "ubuntu2604-baremetal",
+            "Outcome: supported · tier supported · OS release pending verification · provider",
+        ),
+        (
+            "ubuntu2404-baremetal-nvidia-driver-loaded",
+            "Outcome: supported · tier supported · provider",
+        ),
+    ],
+)
+def test_the_preflight_screen_says_when_a_release_is_pending_verification(
+    repo: Paths, fixture: str, shown: str
+) -> None:
+    installer = app(context(repo, FakeHost(preflight(fixture))))
+
+    async def flow(pilot: Pilot[int]) -> None:
+        await forward(pilot, "preflight")
+        line = str(pilot.app.screen.query_one("#outcome", Static).content)
+        assert line.startswith(shown), line
+
+    drive(installer, flow)

@@ -75,6 +75,14 @@ observability_exporters: >-
 observability_gpu: >-
   {{ (pinka_features.gpu_inference | default(false) | bool)
      or (pinka_features.gpu_training | default(false) | bool) }}
+# The Compose service the container pinka-gpu-exporter runs: the chosen
+# exporter with the GPU method Docker offers (docker role facts.yml; without
+# one the compose role stops the play); empty where the lab does not use the
+# GPU, so no exporter runs.
+observability_gpu_service: >-
+  {{ '' if not observability_gpu
+     else (('dcgm_exporter' if observability_gpu_exporter == 'dcgm' else 'gpu_exporter')
+           ~ ('_runtime' if pinka_docker_gpu_method | default('none') == 'runtime' else '')) }}
 # vLLM serves on this host (node_role full or inference) with gpu_inference.
 observability_vllm: "{{ (pinka_features.gpu_inference | default(false) | bool) and node_role in ['full', 'inference'] }}"
 # Data directories under pinka_root/state, owned by the container that writes

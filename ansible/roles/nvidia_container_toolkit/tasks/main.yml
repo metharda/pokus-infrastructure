@@ -15,7 +15,7 @@
     nvidia_container_toolkit_source: >-
       {{ pinka_component_sources | pinka_component_source('nvidia_container_toolkit', pinka_source_group) }}
     nvidia_container_toolkit_versions: >-
-      {{ pinka_versions.packages | pinka_lock_packages('nvidia_container_toolkit', pinka_release_key) }}
+      {{ pinka_versions.packages | pinka_lock_packages('nvidia_container_toolkit', pinka_release_key, ansible_facts['architecture']) }}
 
 - name: Decide whether the toolkit existed before pinka
   ansible.builtin.set_fact:

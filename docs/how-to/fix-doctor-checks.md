@@ -251,6 +251,29 @@ log with `journalctl -u pinka-inference.service -b` and
 before acting. See [How to add a model](add-a-model.md) for activating a
 deployment again.
 
+## `gpu.exporter`: the GPU exporter does not answer, reads no GPU, or another one answers {#check-gpu-exporter}
+
+Full and inference nodes that use the GPU. The exporter that
+`observability_gpu_exporter` names (`nvidia_smi`, the default, or `dcgm`)
+runs in the container `pinka-gpu-exporter` and serves its metrics on
+`127.0.0.1` at the `gpu_exporter` port. No other exporter stands in for the
+one you chose, so the check fails when:
+
+- nothing answers there, or the answer is not 200;
+- the metrics are not that exporter's (`nvidia_smi_*` for `nvidia_smi`,
+  `DCGM_FI_DEV_*` for `dcgm`), or both exporters' are there;
+- the nvidia-smi exporter serves no `nvidia_smi_gpu_info`: it read no GPU
+  (it still serves its own status metrics when nvidia-smi fails);
+- `/etc/pinka/lab.json` has no `gpu.exporter` or `gpu.exporter_metrics`
+  (written by an older bootstrap): run bootstrap with `--tags doctor`.
+
+Read the container's log with `sudo docker logs pinka-gpu-exporter` and run
+bootstrap with `--tags observability`, which starts the chosen exporter and
+only that one. The DCGM exporter runs without capabilities, so it collects
+no profiling metrics; if it cannot start on this GPU or driver, its log says
+why, and `observability_gpu_exporter: nvidia_smi` in `host_vars` switches to
+the nvidia-smi exporter.
+
 ## `inference.pairing`: a split-inference node is not paired as configured {#check-inference-pairing}
 
 Lab and inference nodes only (`node_role: lab` or `inference`). One of these

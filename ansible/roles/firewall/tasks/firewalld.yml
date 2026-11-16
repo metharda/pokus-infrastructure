@@ -1,7 +1,7 @@
 # Managed by pinka (ansible/roles/firewall/tasks/firewalld.yml). Local changes will be overwritten.
 #
 # A dedicated zone pinka-tailnet for tailscale0 with the ssh service; Docker's
-# own zone stays intact. Incus bridges (Incus 6.0.6
+# own zone stays intact. Incus bridges (Incus 6.0.7
 # doc/howto/network_bridge_firewalld.md): bridges with an uplink go into the
 # trusted zone as Incus documents; run networks get their own zone pinka-run
 # that only accepts DHCP and DNS. Run networks are created at run time, so they

@@ -13,7 +13,7 @@ from pinka_test_distros import targets as test_targets
 from pinka_test_distros.harness import STAGES as TEST_STAGES
 
 from pinka_gen import bootstrap
-from pinka_gen.sources import jsonable, load_yaml, resolve_lock_refs
+from pinka_gen.sources import support_matrix, tier_text
 
 TEST_STAGE_TITLES = {
     "launch": "Launch",
@@ -126,10 +126,7 @@ def support_matrix_page(root: Path) -> str:
     Returns:
         Page text.
     """
-    m = resolve_lock_refs(
-        jsonable(load_yaml(root / "preflight/support-matrix.yml")),
-        jsonable(load_yaml(root / "versions.lock.yml")),
-    )
+    m = support_matrix(root)
     out = [
         front_matter(
             "Support matrix",
@@ -142,7 +139,12 @@ def support_matrix_page(root: Path) -> str:
         "preflight decision. Tiers: **supported** (full VM tests and reference GPU hardware), "
         "**tested** (full VM tests, GPU paths not hardware-tested), **experimental** (consent "
         "required), **unsupported**. A host's tier is the worst of its OS, architecture and "
-        "environment tiers.\n\n",
+        "environment tiers. A release shown as *pending verification* is in its tier by its "
+        "rules, but the latest `make test-distros` run of one of its targets has not passed "
+        "every stage: no run yet, or a failing one "
+        "([How to test the distributions](how-to/test-distributions.md)). A passing run clears "
+        "it, a later failing run makes it pending again; pending verification does not expire "
+        "with the 90 days of the results below.\n\n",
         "## Distributions\n\nRules are evaluated top to bottom; the first match wins.\n\n",
     ]
     rows = []
@@ -153,7 +155,7 @@ def support_matrix_page(root: Path) -> str:
             [
                 match_text(rule["match"]),
                 rule.get("family"),
-                rule["tier"],
+                tier_text(rule),
                 rule.get("release_model"),
                 rule.get("parent_from"),
                 f"until {support}" if support else (life.get("source") and "see source") or None,
@@ -298,7 +300,7 @@ def test_results_section(root: Path) -> str:
         Markdown section.
     """
     file = test_targets.load(root / "tests/distros/targets.yml")
-    recorded = {r["target"]: r for r in test_results.load(root / "tests/distros/results.yml")}
+    recorded = test_results.latest(test_results.load(root / "tests/distros/results.yml"))
     out = [
         "\n## Last test results\n\n",
         "`make test-distros` ([How to test the distributions](how-to/test-distributions.md)) "

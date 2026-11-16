@@ -11,7 +11,7 @@ description: Which distributions, architectures and environments the lab support
 
 # Support matrix
 
-Generated from `preflight/support-matrix.yml`, which is the single source of the preflight decision. Tiers: **supported** (full VM tests and reference GPU hardware), **tested** (full VM tests, GPU paths not hardware-tested), **experimental** (consent required), **unsupported**. A host's tier is the worst of its OS, architecture and environment tiers.
+Generated from `preflight/support-matrix.yml`, which is the single source of the preflight decision. Tiers: **supported** (full VM tests and reference GPU hardware), **tested** (full VM tests, GPU paths not hardware-tested), **experimental** (consent required), **unsupported**. A host's tier is the worst of its OS, architecture and environment tiers. A release shown as *pending verification* is in its tier by its rules, but the latest `make test-distros` run of one of its targets has not passed every stage: no run yet, or a failing one ([How to test the distributions](how-to/test-distributions.md)). A passing run clears it, a later failing run makes it pending again; pending verification does not expire with the 90 days of the results below.
 
 ## Distributions
 
@@ -20,6 +20,7 @@ Rules are evaluated top to bottom; the first match wins.
 | Match | Family | Tier | Release model | Parent from | Regular support | Reason |
 | --- | --- | --- | --- | --- | --- | --- |
 | `id` = ubuntu; `version_id` = 24.04 | debian | supported | fixed | — | until 2029-05-31 | — |
+| `id` = ubuntu; `version_id` = 26.04 | debian | supported (pending verification) | fixed | — | until 2031-05-29 | — |
 | `id` = debian; `version_id` = 13 | debian | supported | fixed | — | until 2028-08-09 | — |
 | `id` = ubuntu; `version_id` = 22.04 | debian | tested | fixed | — | until 2027-06-01 | — |
 | `id` = fedora; `version_id_in` = 43, 44 | redhat | tested | fast | — | see source | — |
@@ -138,6 +139,7 @@ No quota-capable storage: neither btrfs nor LVM thin provisioning (dm_thin_pool)
 | `ubuntu-24.04` | ubuntu 24.04 | nftables | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |
 | `ubuntu-24.04-ufw` | ubuntu 24.04 | ufw | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |
 | `ubuntu-24.04-preexisting` | ubuntu 24.04 | nftables | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |
+| `ubuntu-26.04` | ubuntu 26.04 | nftables | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |
 | `debian-13` | debian 13 | nftables | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |
 | `ubuntu-22.04` | ubuntu 22.04 | nftables | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |
 | `fedora-43` | fedora 43 | firewalld, SELinux enforcing | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |

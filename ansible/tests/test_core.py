@@ -393,6 +393,86 @@ def test_compose_config_is_valid(project: str, gpu_method: str, tmp_path: Path) 
     assert ("default" in networks) == (project == "core")
 
 
+@pytest.mark.parametrize("gpu_method", ["cdi", "runtime"])
+@pytest.mark.parametrize("exporter", ["nvidia_smi", "dcgm"])
+def test_only_the_chosen_gpu_exporter_runs(exporter: str, gpu_method: str, tmp_path: Path) -> None:
+    """The exporter observability_gpu_exporter names, at its pinned digest, and no other."""
+    docker = shutil.which("docker")
+    assert docker, "the Docker CLI with the Compose plugin is needed for this test"
+    shutil.copy(INFRA / "compose" / "observability" / "compose.yml", tmp_path / "compose.yml")
+    (include,) = compose_includes()["observability"]
+    variables = compose_vars(
+        "observability",
+        compose_root=str(tmp_path.parent),
+        compose_gpu_method=gpu_method,
+        observability_gpu_exporter=exporter,
+    )
+    extra = {
+        key: evaluate(value.strip("{} "), variables | DEFAULTS)
+        for key, value in include.get("compose_extra_env", {}).items()
+    }
+    # The choice over the role's default.
+    profile = evaluate(include["compose_gpu_profile"].strip("{} "), DEFAULTS | variables)
+    text = render_template(
+        "compose",
+        "env.j2",
+        {
+            **variables,
+            "compose_extra_env": extra,
+            "compose_gpu": True,
+            "compose_gpu_profile": profile,
+            "compose_profiles": [],
+        },
+    )
+    (tmp_path / ".env").write_text(text)
+    result = subprocess.run(
+        [docker, "compose", "--project-directory", str(tmp_path), "config", "--format", "json"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    services = yaml.safe_load(result.stdout)["services"]
+    exporters = {
+        name: service
+        for name, service in services.items()
+        if service.get("container_name") == "pinka-gpu-exporter"
+    }
+    expected = {
+        ("nvidia_smi", "cdi"): "gpu_exporter",
+        ("nvidia_smi", "runtime"): "gpu_exporter_runtime",
+        ("dcgm", "cdi"): "dcgm_exporter",
+        ("dcgm", "runtime"): "dcgm_exporter_runtime",
+    }[(exporter, gpu_method)]
+    assert sorted(exporters) == [expected]
+    (service,) = exporters.values()
+    image = LOCK["containers"]["images"]["dcgm_exporter" if exporter == "dcgm" else "gpu_exporter"]
+    assert service["image"] == f"{image['image']}@{image['digest']}"
+    other = LOCK["containers"]["images"]["gpu_exporter" if exporter == "dcgm" else "dcgm_exporter"]
+    assert all(s["image"] != f"{other['image']}@{other['digest']}" for s in services.values())
+    port = variables["pinka_internal_ports"]["gpu_exporter"]
+    flag = "--address" if exporter == "dcgm" else "--web.listen-address"
+    assert service["command"] == [f"{flag}=127.0.0.1:{port}"]
+    ids = variables["observability_ids"]["gpu_exporter"]
+    assert service["user"] == f"{ids['uid']}:{ids['gid']}"
+    # No capabilities: no profiling metrics, nothing beyond the exporter's reads.
+    assert service["cap_drop"] == ["ALL"]
+    assert "cap_add" not in service
+    assert service["read_only"] is True
+    assert service["security_opt"] == ["no-new-privileges:true"]
+    assert service["network_mode"] == "host"
+    # What every lab container gets (as in test_compose_config_is_valid).
+    assert service["cgroup_parent"] == "pinka-services.slice"
+    assert service["logging"] == {
+        "driver": "local",
+        "options": {"max-size": "20m", "max-file": "5"},
+    }
+    if gpu_method == "cdi":
+        assert [d["source"] for d in service["devices"]] == ["nvidia.com/gpu=all"]
+    else:
+        assert service["runtime"] == "nvidia"
+
+
 def test_postgres_configuration() -> None:
     text = render_file(INFRA / "config/postgres/postgresql.conf.j2", postgres_vars())
     settings = dict(
@@ -546,10 +626,38 @@ def test_the_drafts_changes_have_a_section_and_a_rule() -> None:
     changes = contract_section("Changes from contract v1")
     section = contract_section("Changes to the draft of contract v2", "###")
     assert section.strip() in changes
-    assert " ".join(section.split("\n\n| Change |")[0].split()) == (
-        "The changes under `contract/` before the first infra release, which keep the version "
-        '(see "Changing the contract" above).'
+    # It covers contract/ and every file the page names as one a platform reads.
+    intro = " ".join(section.split("\n\n| Change |")[0].split())
+    assert intro == (
+        "The changes before the first infra release, which keep the version: to `contract/` "
+        '(see "Changing the contract" above), and to every file this page names as one a '
+        "platform reads, such as the host profile and `bootstrap-state.json` ([Paths](#paths)), "
+        "the fingerprint and the records ([Provenance, records and "
+        "keys](#provenance-records-and-keys)), the GPU arbiter's records ([Inference and the "
+        "GPU](#inference)), and the principals and endpoints files ([Principals and endpoints "
+        "files](#principals-and-endpoints-files))."
     )
+    text = CONTRACT.read_text(encoding="utf-8")
+    for heading in (
+        "## Paths",
+        "## Provenance, records and keys",
+        "## Inference and the GPU {#inference}",
+        "### Principals and endpoints files",
+    ):
+        assert f"\n{heading}\n" in text, heading
+    paths = contract_section("Paths")
+    for named in (
+        "`/etc/pinka/host-profile.json`",
+        "`/etc/pinka/bootstrap-state.json`",
+        "`/var/lib/pinka/fingerprint/current.json`",
+    ):
+        assert named in paths, named
+    # The arbiter's records: a dataset's provenance, an adapter's manifest and lineage.
+    inference = table_rows(contract_section("Inference and the GPU {#inference}"))
+    assert "`PROVENANCE.json`" in one_row(inference, "Datasets")
+    adapters = one_row(inference, "Adapters")
+    assert "`MANIFEST.json`" in adapters and "`LINEAGE.json`" in adapters
+    one_row(table_rows(contract_section("Provenance, records and keys")), "Fingerprint")
     rows = table_rows(section)
     assert rows[:2] == ["| Change | What a platform sees |", "| --- | --- |"]
     # The reserved accounts of infra's containers: each one is reserved and

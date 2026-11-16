@@ -660,6 +660,84 @@ class GpuTest(Base):
         system = FakeSystem(files=current, http={"GET http://127.0.0.1:18704/health": (503, "")})
         self.assertOutcome(run(checks.check_vllm, system), "fail", "503")
 
+    def test_gpu_exporter(self) -> None:
+        url = "GET http://127.0.0.1:18726/metrics"
+        smi = (
+            '# HELP nvidia_smi_gpu_info x\nnvidia_smi_gpu_info{uuid="u",name="x"} 1\n'
+            'nvidia_smi_utilization_gpu_ratio{uuid="u"} 0.5\n'
+        )
+        dcgm = '# HELP DCGM_FI_DEV_GPU_UTIL x\nDCGM_FI_DEV_GPU_UTIL{UUID="u"} 50\n'
+
+        def gpu(exporter: str) -> dict[str, Any]:
+            return {**LAB["gpu"], "exporter": exporter}
+
+        check = checks.check_gpu_exporter
+        self.assertOutcome(run(check, FakeSystem(http={url: (200, smi)})), "pass", "nvidia_smi")
+        dcgm_system = FakeSystem(http={url: (200, dcgm)})
+        self.assertOutcome(run(check, dcgm_system, gpu=gpu("dcgm")), "pass", "dcgm exporter")
+        # Another exporter never stands in for the chosen one.
+        self.assertOutcome(
+            run(check, dcgm_system), "fail", "serves dcgm metrics, not those of nvidia_smi"
+        )
+        self.assertOutcome(
+            run(check, FakeSystem(http={url: (200, smi)}), gpu=gpu("dcgm")),
+            "fail",
+            "serves nvidia_smi metrics, not those of dcgm",
+        )
+        # A comment naming a metric is not the metric.
+        comment_only = "# HELP DCGM_FI_DEV_GPU_UTIL x\n# TYPE DCGM_FI_DEV_GPU_UTIL gauge\n"
+        self.assertOutcome(
+            run(check, FakeSystem(http={url: (200, comment_only)}), gpu=gpu("dcgm")),
+            "fail",
+            "serves no GPU exporter's metrics",
+        )
+        both = FakeSystem(http={url: (200, smi + dcgm)})
+        self.assertOutcome(run(check, both, gpu=gpu("dcgm")), "fail", "not dcgm alone")
+        # The exporter's own status metrics without a GPU's: nvidia-smi failed.
+        status = "nvidia_smi_command_exit_code 1\nnvidia_smi_failed_scrapes_total 3\n"
+        self.assertOutcome(
+            run(check, FakeSystem(http={url: (200, status)})),
+            "fail",
+            "serves no nvidia_smi_gpu_info: the nvidia_smi exporter reads no GPU",
+        )
+        # A GPU whose utilization reads N/A (MIG) still has its gpu_info.
+        info = 'nvidia_smi_gpu_info{uuid="u",name="x"} 1\nnvidia_smi_failed_scrapes_total 0\n'
+        self.assertOutcome(run(check, FakeSystem(http={url: (200, info)})), "pass")
+        # Any DCGM_FI_DEV_* sample is a GPU's.
+        temp_only = 'DCGM_FI_DEV_GPU_TEMP{UUID="u"} 40\n'
+        self.assertOutcome(
+            run(check, FakeSystem(http={url: (200, temp_only)}), gpu=gpu("dcgm")), "pass"
+        )
+        # The same name as a prefix of a longer one is not the metric.
+        longer = "nvidia_smi_gpu_info_other 1\nnvidia_smi_x 1\n"
+        self.assertOutcome(
+            run(check, FakeSystem(http={url: (200, longer)})), "fail", "reads no GPU"
+        )
+        # A missing key in an older lab.json, named.
+        for key in ("exporter", "exporter_metrics"):
+            old = {k: v for k, v in LAB["gpu"].items() if k != key}
+            self.assertOutcome(
+                run(check, FakeSystem(), gpu=old),
+                "fail",
+                f"/etc/pinka/lab.json has no gpu.{key}: run bootstrap with --tags doctor",
+            )
+        self.assertOutcome(
+            run(check, FakeSystem(http={url: (200, smi)}), node_role="inference"), "pass"
+        )
+        self.assertOutcome(run(check, FakeSystem()), "fail", "answered nothing")
+        self.assertOutcome(run(check, FakeSystem(http={url: (503, "")})), "fail", "answered 503")
+        self.assertOutcome(
+            run(check, FakeSystem(), gpu=gpu("other")), "fail", "not nvidia_smi or dcgm"
+        )
+        # Only where GPU containers run.
+        self.assertOutcome(run(check, FakeSystem(), node_role="lab"), "skip")
+        no_gpu = {"gpu_inference": False, "gpu_training": False}
+        self.assertOutcome(run(check, FakeSystem(), features=no_gpu), "skip")
+        training = {"gpu_inference": False, "gpu_training": True}
+        self.assertOutcome(
+            run(check, FakeSystem(http={url: (200, smi)}), features=training), "pass"
+        )
+
 
 class DiskTest(Base):
     """Free space per mount point and its trend."""

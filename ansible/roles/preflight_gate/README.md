@@ -9,7 +9,10 @@ KVM disappeared is never provisioned as if nothing happened.
 
 It also refuses an outcome that the recorded consent does not cover (for
 example `degraded` without `accept_degraded`), so the play cannot be run
-around bootstrap's gate.
+around bootstrap's gate, and refuses `observability_gpu_exporter: dcgm` where
+the lab uses the GPU but the `dcgm_metrics` feature is off (WSL2, no NVIDIA
+driver loaded): the chosen exporter runs, or the play stops before anything
+changes; the other exporter never runs in its place.
 
 Preflight runs with the same choices as bootstrap's: `--nvidia-driver` with
 the machine's `install_nvidia_driver`, and `--accept-mok-enrollment` when the

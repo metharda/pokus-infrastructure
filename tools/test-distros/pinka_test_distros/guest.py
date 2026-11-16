@@ -315,7 +315,7 @@ def image_store(  # noqa: PLR0915 - one step per operation, in order
             "source": {"type": "image", "fingerprint": golden_fp},
             "properties": {STORE_REWRITTEN[0]: STORE_REWRITTEN[1]},
         }
-        # Incus 6.0.6 rewrites the record, then fails on the image's own aliases.
+        # Incus 6.0.7 rewrites the record, then fails on the image's own aliases.
         step(
             "the client rewrites the golden image's record through a new image request",
             [

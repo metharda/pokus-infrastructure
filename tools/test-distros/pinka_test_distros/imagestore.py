@@ -10,7 +10,7 @@ record (its properties among them) through a new image request that names
 the image's fingerprint, and the stage checks that too. The guest helper's
 ``image-store`` command tries each operation with the incus CLI, as root's
 stand-in of a golden image beside the client's own; this module says what
-each must give. The refusal texts are those of the pinned Incus (6.0.6);
+each must give. The refusal texts are those of the pinned Incus (6.0.7);
 the report names the server's version.
 """
 
@@ -38,7 +38,7 @@ ALLOWED = (
 )
 # The property that request sets, and its value (guest.STORE_REWRITTEN).
 REWRITTEN = ("user.pinka-test", "rewritten")
-# What Incus 6.0.6 answers a trusted certificate restricted to other projects
+# What Incus 6.0.7 answers a trusted certificate restricted to other projects
 # when the object is in the default project (internal/server/auth/driver_tls.go,
 # CheckPermission); an untrusted client gets "not authorized" instead.
 RESTRICTED = 'User does not have permission for project "default"'
@@ -118,7 +118,7 @@ def _store(report: Mapping[str, Any]) -> list[str]:
             f"the golden image's description changed: {properties.get('description')!r}"
         )
     # A new image request naming the golden image rewrites its record (Incus
-    # 6.0.6: cmd/incusd/images.go, imgPostRemoteInfo): the role must not rely
+    # 6.0.7: cmd/incusd/images.go, imgPostRemoteInfo): the role must not rely
     # on properties a client cannot change.
     key, value = REWRITTEN
     if properties.get(key) != value:

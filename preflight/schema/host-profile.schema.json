@@ -13,6 +13,7 @@
     "exit_code",
     "tier",
     "os_tier",
+    "pending_verification",
     "arch_tier",
     "release_model",
     "family",
@@ -92,6 +93,10 @@
     "os_tier": {
       "description": "Tier of the matched OS rule.",
       "$ref": "#/$defs/tier"
+    },
+    "pending_verification": {
+      "description": "Whether the matched OS rule is pending verification: no passing make test-distros run of the release yet, or its latest run failed (the support matrix's pending_verification, decided from tests/distros/results.yml).",
+      "type": "boolean"
     },
     "arch_tier": {
       "description": "Tier of the matched architecture rule.",

@@ -34,6 +34,9 @@ targets:
   # The uninstall lane's variant: Docker with a workload
   # and a logged-in Tailscale node exist before pinka; both stay as they were.
   - {id: ubuntu-24.04-preexisting, image: ubuntu/24.04/cloud, os: {id: ubuntu, version_id: "24.04"}, firewall: nftables, preexisting: [docker, tailscale]}
+  # Its latest run clears the support matrix's pending verification when it
+  # passed every stage.
+  - {id: ubuntu-26.04, image: ubuntu/26.04/cloud, os: {id: ubuntu, version_id: "26.04"}, firewall: nftables}
   - {id: debian-13, image: debian/13/cloud, os: {id: debian, version_id: "13"}, firewall: nftables}
   - {id: ubuntu-22.04, image: ubuntu/22.04/cloud, os: {id: ubuntu, version_id: "22.04"}, firewall: nftables}
   - {id: fedora-43, image: fedora/43/cloud, os: {id: fedora, version_id: "43"}, firewall: firewalld, selinux: enforcing}

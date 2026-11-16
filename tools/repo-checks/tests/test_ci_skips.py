@@ -147,13 +147,29 @@ def test_the_unittest_runs_name_their_skips_and_obey_the_list(
     out = capsys.readouterr().out
     assert ci_skips.refusal(unlisted, "needs a GPU") in out
     assert "test_listed (reason" in out and "refusal" not in out
+    # An entry names one run: the py314 run is refused a skip listed for py39 only.
+    assert unittest_run.main(["--run", "py314", *argv]) == 1
+    out = capsys.readouterr().out
+    assert ci_skips.refusal("x/tests/test_skips_case.py::Case::test_listed", "listed reason") in out
+    # And the reverse: entries for py314 alone pass the py314 run and not the py39 run.
+    only314 = skip_list(
+        tmp_path / "skips314.json",
+        ("x/tests/test_skips_case.py::Case::test_listed", "py314"),
+        (unlisted, "py314"),
+    )
+    argv314 = ["--prefix", "x/tests", "--skip-list", str(only314), "discover", "-s", str(tmp_path)]
+    assert unittest_run.main(["--run", "py314", *argv314]) == 0
+    capsys.readouterr()
+    assert unittest_run.main(argv314) == 1
+    out = capsys.readouterr().out
+    assert ci_skips.refusal(unlisted, "needs a GPU") in out
 
 
 def test_the_list_names_real_tests_with_their_reasons() -> None:
     data = json.loads(ci_skips.LIST.read_text(encoding="utf-8"))
     for entry in data["skips"]:
         assert set(entry) == {"test", "run", "reason"}, entry
-        assert entry["run"] in ("pytest", unittest_run.RUN), entry
+        assert entry["run"] in ("pytest", *unittest_run.RUNS), entry
         assert len(entry["reason"]) > 20, entry  # a reason, not a word
         path, *names = entry["test"].split("::")
         text = (ROOT / path).read_text(encoding="utf-8")
@@ -166,8 +182,12 @@ def test_every_pytest_run_loads_the_plugin_and_the_unittest_runs_use_the_runner(
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     assert "-p pinka_repo_checks.skip_policy" in pyproject
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
-    block = makefile[makefile.index("\ntest-py39:") :].split("\n\n", 1)[0]
-    commands = [line for line in block.splitlines() if not line.lstrip().startswith("@#")]
-    assert not [line for line in commands if "python -m unittest" in line]
-    # preflight, pinka, the install record module and the uninstall module
-    assert block.count("python -m pinka_repo_checks.unittest_run") == 4
+    for target, run in (("test-py39", None), ("test-py314", "py314")):
+        block = makefile[makefile.index(f"\n{target}:") :].split("\n\n", 1)[0]
+        commands = [line for line in block.splitlines() if not line.lstrip().startswith("@#")]
+        assert not [line for line in commands if "python -m unittest" in line], target
+        # preflight, pinka, the install record module and the uninstall module
+        assert block.count("python -m pinka_repo_checks.unittest_run") == 4, target
+        if run:
+            # Each names its run, so the CI skip list's entries for it apply.
+            assert block.count(f"--run {run}") == 4, target

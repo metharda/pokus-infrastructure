@@ -223,21 +223,77 @@ def test_component_source() -> None:
 LOCK = {
     "docker": {"ubuntu-24.04": {"docker-ce": "5:29.0.0-1"}, "el-9": "TODO(verify)"},
     "tailscale": {"ubuntu-24.04": {"tailscale": "TODO(verify)"}},
+    "incus": {
+        "ubuntu-24.04": {
+            "incus": {"x86_64": "1:6.0.7-u-1755", "aarch64": "1:6.0.7-u-1834"},
+            "incus-client": "1:6.0.7-u",
+        },
+        "debian-13": {"incus": {"x86_64": "1:6.0.7-d-1800", "aarch64": "TODO(verify)"}},
+        "ubuntu-22.04": {"incus": {"x86_64": "1:6.0.7-j-1755"}},
+    },
 }
 
 
 def test_lock_packages() -> None:
-    assert pinka.lock_packages(LOCK, "docker", "ubuntu-24.04") == {"docker-ce": "5:29.0.0-1"}
-    assert pinka.lock_packages(LOCK, "docker", "") == {}  # rolling
+    assert pinka.lock_packages(LOCK, "docker", "ubuntu-24.04", "x86_64") == {
+        "docker-ce": "5:29.0.0-1"
+    }
+    # One version serves every architecture.
+    assert pinka.lock_packages(LOCK, "docker", "ubuntu-24.04", "aarch64") == {
+        "docker-ce": "5:29.0.0-1"
+    }
+    assert pinka.lock_packages(LOCK, "docker", "", "x86_64") == {}  # rolling
+
+
+@pytest.mark.parametrize(
+    ("arch", "incus"), [("x86_64", "1:6.0.7-u-1755"), ("aarch64", "1:6.0.7-u-1834")]
+)
+def test_lock_packages_picks_the_hosts_architecture(arch: str, incus: str) -> None:
+    assert pinka.lock_packages(LOCK, "incus", "ubuntu-24.04", arch) == {
+        "incus": incus,
+        "incus-client": "1:6.0.7-u",
+    }
+
+
+def test_lock_packages_refuses_an_architecture_without_a_version() -> None:
+    with pytest.raises(
+        pinka.PinkaFilterError, match="for aarch64, x86_64 only, not for this host's riscv64"
+    ):
+        pinka.lock_packages(LOCK, "incus", "ubuntu-24.04", "riscv64")
+    with pytest.raises(pinka.PinkaFilterError, match=r"incus of incus on ubuntu-22\.04 for x86_64"):
+        pinka.lock_packages(LOCK, "incus", "ubuntu-22.04", "aarch64")
+    # The architecture's version is what counts.
+    assert pinka.lock_packages(LOCK, "incus", "debian-13", "x86_64") == {"incus": "1:6.0.7-d-1800"}
+    with pytest.raises(pinka.PinkaFilterError, match="no verified pins for incus on debian-13"):
+        pinka.lock_packages(LOCK, "incus", "debian-13", "aarch64")
+
+
+def test_every_role_passes_the_hosts_architecture_to_lock_packages() -> None:
+    calls = [
+        (path.relative_to(ANSIBLE), call)
+        for path in sorted((ANSIBLE / "roles").rglob("*"))
+        if path.suffix in (".yml", ".md")
+        for call in path.read_text(encoding="utf-8").split("pinka_lock_packages(")[1:]
+    ]
+    assert len(calls) >= 7  # docker, incus, tailscale, the toolkit, the driver (2), pkg's README
+    for path, call in calls:
+        arguments = call.split(")", 1)[0].split(", ")
+        assert arguments[1:] == ["pinka_release_key", "ansible_facts['architecture']"], path
 
 
 @pytest.mark.parametrize(
     ("component", "key"),
-    [("docker", "el-9"), ("docker", "debian-13"), ("tailscale", "ubuntu-24.04"), ("incus", "el-9")],
+    [
+        ("docker", "el-9"),
+        ("docker", "debian-13"),
+        ("tailscale", "ubuntu-24.04"),
+        ("incus", "el-9"),
+        ("nvidia_driver", "ubuntu-24.04"),  # a component the lock lacks
+    ],
 )
 def test_lock_packages_refuses_unverified_pins(component: str, key: str) -> None:
     with pytest.raises(pinka.PinkaFilterError, match="no verified pins"):
-        pinka.lock_packages(LOCK, component, key)
+        pinka.lock_packages(LOCK, component, key, "x86_64")
 
 
 @pytest.mark.parametrize(

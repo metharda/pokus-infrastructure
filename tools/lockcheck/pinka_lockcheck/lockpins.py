@@ -12,13 +12,27 @@ before it is committed. It covers:
   cross-checked against a second source where one exists: the fingerprint the
   vendor publishes elsewhere (Zabbly's README on GitHub) and the key that
   keyserver.ubuntu.com returns for that fingerprint;
-* the package versions of Incus (Zabbly) and Tailscale for every apt release
-  of the lock, with the repository layout of
+* the package versions of every apt release of the lock whose component
+  comes from a vendor repository (Docker, the NVIDIA Container Toolkit, Incus
+  from Zabbly, Tailscale; Docker's and the Toolkit's keys as the lock pins
+  them, their fingerprints checked), with the repository layout of
   ``ansible/component-sources.yml``: the release file (``InRelease``) must
-  carry a valid signature of that key (checked with ``gpgv``), name the
-  components the layout uses and list the package index whose sha256 it
-  states; the newest version of every package the component installs is
-  read from that index, for x86_64 and aarch64;
+  carry a valid signature of that key (checked with ``gpgv``; only the text
+  gpgv verified is read), name the components the layout uses and list the
+  package indexes with the hash it states (every component; a flat
+  repository's index next to its release file); the newest version of every
+  package the component installs is read for x86_64 and aarch64, and printed
+  as one version where both are the same, else as
+  ``{x86_64: <version>, aarch64: <version>}`` (Zabbly builds each
+  architecture separately);
+* the NVIDIA driver's packages of every Ubuntu release of the lock: the
+  newest version in Ubuntu's restricted pocket (``-updates``, ``-security``,
+  the release), amd64, through the machine's Ubuntu archive keyring;
+* every version the lock pins for one of these releases that its indexes no
+  longer list (``NOT IN THE INDEX``; apt cannot install it; a package's one
+  version is looked up in the amd64 indexes, a version per architecture in
+  its architecture's): the new pin is printed all the same, and the run
+  exits 1;
 * the DCGM exporter image: the newest release tag on nvcr.io, cross-checked
   with the release's own ``hack/versions.env`` on GitHub, and its index
   digest and platforms;
@@ -33,8 +47,9 @@ before it is committed. It covers:
   (``nvidia_driver_gpus``): NVIDIA's ``supported-gpus.json`` from Ubuntu's
   ``nvidia-kernel-common-<branch>`` package of that version, read through the
   signed ``-updates`` index (``InRelease`` checked with ``gpgv`` and the Ubuntu
-  archive keyring of the machine, ``/usr/share/keyrings``), the index's and the
-  package's sha256 checked; its open-module device IDs must equal NVIDIA's
+  archive keyring of the machine, ``/usr/share/keyrings``), the index's hash
+  (SHA256, else SHA512) and the package's sha256 checked; its open-module
+  device IDs must equal NVIDIA's
   open-gpu-kernel-modules README at the release tag and the ``Modaliases`` of
   ``nvidia-driver-<branch>-open``, and its current IDs those of
   ``nvidia-driver-<branch>`` (:mod:`pinka_lockcheck.nvidia_gpus`).
@@ -47,15 +62,12 @@ from __future__ import annotations
 import argparse
 import base64
 import datetime as dt
-import gzip
 import hashlib
 import json
-import lzma
 import re
 import shutil
 import subprocess
 import sys
-import tempfile
 import textwrap
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -64,16 +76,18 @@ from typing import Any
 
 import yaml
 
-from pinka_lockcheck import checks, net, nvidia_gpus, openpgp
+from pinka_lockcheck import aptindex, checks, net, nvidia_gpus, openpgp
 
-# The components and repository keys this tool pins.
-COMPONENTS = ("incus", "tailscale")
+# The components whose apt releases come from a vendor repository, and the
+# repository keys this tool pins (the other vendor keys come from the lock).
+COMPONENTS = ("docker", "nvidia_container_toolkit", "incus", "tailscale")
 # Every URL of a key must carry the same single key; the first is the one the
 # pkg role downloads (Tailscale publishes the same key for every distribution).
 KEY_URLS: dict[str, tuple[str, ...]] = {
     "zabbly": ("https://pkgs.zabbly.com/key.asc",),
     "tailscale": (
         "https://pkgs.tailscale.com/stable/ubuntu/noble.asc",
+        "https://pkgs.tailscale.com/stable/ubuntu/resolute.asc",
         "https://pkgs.tailscale.com/stable/ubuntu/jammy.asc",
         "https://pkgs.tailscale.com/stable/debian/trixie.asc",
         "https://pkgs.tailscale.com/stable/fedora/repo.gpg",
@@ -85,7 +99,7 @@ FINGERPRINT_PAGES: dict[str, tuple[str, ...]] = {
 }
 KEYSERVER = "https://keyserver.ubuntu.com/pks/lookup?op=get&options=mr&search=0x{fingerprint}"
 # The lock's architectures and their apt names.
-APT_ARCHES = {"x86_64": "amd64", "aarch64": "arm64"}
+APT_ARCHES = checks.APT_ARCHES
 DCGM_IMAGE = "nvcr.io/nvidia/k8s/dcgm-exporter"
 DCGM_VERSIONS = "https://raw.githubusercontent.com/NVIDIA/dcgm-exporter/{tag}/hack/versions.env"
 # Release tags of the exporter since 4.8.4 are its own version only.
@@ -137,22 +151,11 @@ def _keyscan(host: str) -> str | None:
     return done.stdout if done.returncode == 0 and done.stdout.strip() else None
 
 
-def _gpgv(keyring: bytes, signed: bytes) -> None:
-    command = shutil.which("gpgv")
-    if command is None:
-        raise PinError("gpgv is not installed (Debian and Ubuntu package gpgv)")
-    with tempfile.TemporaryDirectory() as tmp:
-        ring = Path(tmp, "keyring.gpg")
-        ring.write_bytes(keyring)
-        done = subprocess.run(  # noqa: S603 - fixed arguments
-            [command, "--keyring", str(ring), "-"],
-            input=signed,
-            capture_output=True,
-            check=False,
-        )
-    if done.returncode != 0:
-        detail = done.stderr.decode(errors="replace").strip().splitlines()
-        raise PinError(f"the signature does not verify with the key: {' / '.join(detail)}")
+def _gpgv(keyring: bytes, signed: bytes) -> str:
+    try:
+        return aptindex.verify_signature(keyring, signed)
+    except aptindex.AptIndexError as exc:
+        raise PinError(str(exc)) from exc
 
 
 def _read_file(path: str) -> bytes:
@@ -169,7 +172,8 @@ class Network:
         registry_json: ``(image, path) -> (headers, JSON)`` from a registry's v2 API
             (header names in lower case).
         keyscan: ``host -> ssh-keyscan output``, or None when it cannot run.
-        gpgv: ``(keyring, signed) -> None``; raises :class:`PinError` on a bad signature.
+        gpgv: ``(keyring, signed) -> signed text``, the text gpgv verified (its
+            output); raises :class:`PinError` on a bad signature.
         read_file: ``path -> content`` of a local file (the Ubuntu archive keyring).
         extract: ``(deb, path) -> content`` of a file inside a Debian package.
     """
@@ -178,7 +182,7 @@ class Network:
     hash_into: Callable[[str, Any], None] = _hash_into
     registry_json: Callable[[str, str], tuple[Mapping[str, str], Any]] = net.registry_json
     keyscan: Callable[[str], str | None] = _keyscan
-    gpgv: Callable[[bytes, bytes], None] = _gpgv
+    gpgv: Callable[[bytes, bytes], str] = _gpgv
     read_file: Callable[[str], bytes] = _read_file
     extract: Callable[[bytes, str], bytes] = nvidia_gpus.extract_member
 
@@ -328,7 +332,10 @@ class PackagePin:
         release: The release key (``ubuntu-24.04``).
         versions: ``{arch: {package: version}}`` for x86_64 and aarch64.
         repository: The ``component-sources.yml`` repository read.
-        index: The package index (URL), its sha256 from the signed release file.
+        index: Each package index read (URL), with the hash its signed release
+            file states.
+        available: ``{arch: {package: {version, ...}}}``, every version the
+            indexes list, to tell whether the lock's pins are still there.
     """
 
     component: str
@@ -336,6 +343,7 @@ class PackagePin:
     versions: dict[str, dict[str, str]]
     repository: str
     index: list[str]
+    available: dict[str, dict[str, set[str]]] = field(default_factory=dict)
 
 
 def _codenames(platform_facts_vars: Mapping[str, Any]) -> dict[str, str]:
@@ -343,33 +351,7 @@ def _codenames(platform_facts_vars: Mapping[str, Any]) -> dict[str, str]:
     return {f"{v['distro']}-{v['version']}": name for name, v in table.items()}
 
 
-def _paragraphs(text: str) -> Iterable[dict[str, str]]:
-    for block in re.split(r"\n\s*\n", text):
-        fields: dict[str, str] = {}
-        key = ""
-        for line in block.splitlines():
-            if line.startswith((" ", "\t")) and key:
-                fields[key] += "\n" + line.strip()
-            elif ":" in line:
-                key, _, value = line.partition(":")
-                fields[key] = value.strip()
-        if fields:
-            yield fields
-
-
-def _release_sha256(release: str, path: str) -> str | None:
-    for paragraph in _paragraphs(release):
-        for line in paragraph.get("SHA256", "").splitlines():
-            parts = line.split()
-            if len(parts) == 3 and parts[2] == path:  # noqa: PLR2004 - sha256 size path
-                return parts[0]
-    return None
-
-
-def _signed_text(signed: bytes) -> str:
-    text = signed.decode("utf-8")
-    body = text.split("\n\n", 1)[1] if text.startswith("-----BEGIN PGP SIGNED") else text
-    return body.split("\n-----BEGIN PGP SIGNATURE-----", 1)[0]
+_paragraphs = aptindex.paragraphs
 
 
 @dataclass(frozen=True)
@@ -391,8 +373,28 @@ class AptSource:
     packages: tuple[str, ...]
 
 
+def _release(network: Network, keyring: bytes, base: str) -> str:
+    """A release file's text as gpgv verified it with the keyring."""
+    signed = network.download(f"{base}/InRelease")
+    try:
+        return network.gpgv(keyring, signed)
+    except PinError as exc:
+        raise PinError(f"{base}/InRelease: {exc}") from exc
+
+
+def _index(network: Network, release: str, repository: aptindex.Repository) -> aptindex.IndexFile:
+    try:
+        return aptindex.read_packages(network.download, release, repository)
+    except aptindex.AptIndexError as exc:
+        raise PinError(str(exc)) from exc
+
+
 def pin_packages(network: Network, source: AptSource, codename: str, key: KeyPin) -> PackagePin:
     """Read the newest versions of a component's packages from a signed apt repository.
+
+    Every component the repository names is read, for x86_64 and aarch64; a
+    flat repository (suite ``/``) has its architecture in its URI
+    (``{deb_arch}``). Only the text gpgv verified is read from a release file.
 
     Raises:
         PinError: If the signature, the layout or an index does not check out.
@@ -405,56 +407,58 @@ def pin_packages(network: Network, source: AptSource, codename: str, key: KeyPin
     )
     packages = source.packages
     distro, _, version = release.partition("-")
-    values = {"distro": distro, "codename": codename, "major": version.split(".")[0]}
-    uri = str(repo["uri"]).format(**values).rstrip("/")
-    suite = str(repo["suite"]).format(**values)
-    base = f"{uri}/dists/{suite}"
-    signed = network.download(f"{base}/InRelease")
-    try:
-        network.gpgv(key.keyring, signed)
-    except PinError as exc:
-        raise PinError(f"{base}/InRelease: {exc}") from exc
-    release_text = _signed_text(signed)
-    head = next(iter(_paragraphs(release_text)), {})
-    components = head.get("Components", "").split()
-    arches = head.get("Architectures", "").split()
-    for wanted in repo.get("components") or []:
-        if wanted not in components:
-            raise PinError(f"{base}/InRelease names no component {wanted!r} ({components})")
+    releases: dict[str, str] = {}
     versions: dict[str, dict[str, str]] = {}
+    available: dict[str, dict[str, set[str]]] = {}
     index = []
     for arch, apt_arch in APT_ARCHES.items():
-        if apt_arch not in arches:
-            raise PinError(f"{base}/InRelease has no architecture {apt_arch}")
-        component_dir = (repo.get("components") or [""])[0]
-        found = None
-        for name, opener in (
-            ("Packages.xz", lzma.decompress),
-            ("Packages.gz", gzip.decompress),
-            ("Packages", bytes),
-        ):
-            path = f"{component_dir}/binary-{apt_arch}/{name}".lstrip("/")
-            expected = _release_sha256(release_text, path)
-            if expected:
-                data = network.download(f"{base}/{path}")
-                actual = hashlib.sha256(data).hexdigest()
-                if actual != expected:
-                    raise PinError(f"{base}/{path} has sha256 {actual}, InRelease says {expected}")
-                found = opener(data).decode("utf-8")
-                index.append(f"{base}/{path} sha256 {actual}")
-                break
-        if found is None:
-            raise PinError(f"{base}/InRelease lists no package index for {apt_arch}")
-        available: dict[str, list[str]] = {}
-        for paragraph in _paragraphs(found):
-            available.setdefault(paragraph.get("Package", ""), []).append(
-                paragraph.get("Version", "")
-            )
-        missing = [p for p in packages if p not in available]
+        values = {
+            "distro": distro,
+            "codename": codename,
+            "major": version.split(".")[0],
+            "deb_arch": apt_arch,
+        }
+        uri = str(repo["uri"]).format(**values).rstrip("/")
+        suite = str(repo["suite"]).format(**values)
+        found: dict[str, list[str]] = {}
+        for part in repo.get("components") or [""]:
+            repository = aptindex.Repository.of(uri, suite, str(part), apt_arch)
+            if repository.base not in releases:
+                releases[repository.base] = _release(network, key.keyring, repository.base)
+            head = next(iter(_paragraphs(releases[repository.base])), {})
+            if repository.component and apt_arch not in head.get("Architectures", "").split():
+                raise PinError(f"{repository.base}/InRelease has no architecture {apt_arch}")
+            read = _index(network, releases[repository.base], repository)
+            index.append(f"{read.url} {read.field.lower()} {read.digest}")
+            for paragraph in read.packages:
+                found.setdefault(paragraph.get("Package", ""), []).append(
+                    paragraph.get("Version", "")
+                )
+        missing = [p for p in packages if p not in found]
         if missing:
-            raise PinError(f"{base} ({apt_arch}) has no package {', '.join(missing)}")
-        versions[arch] = {p: newest(available[p]) for p in packages}
-    return PackagePin(component, release, versions, repo_name, index)
+            raise PinError(f"{uri} ({apt_arch}) has no package {', '.join(missing)}")
+        versions[arch] = {p: newest(found[p]) for p in packages}
+        available[arch] = {p: set(v) for p, v in found.items()}
+    return PackagePin(component, release, versions, repo_name, index, available)
+
+
+def lock_key(network: Network, lock: Mapping[str, Any], name: str) -> KeyPin:
+    """A vendor key this tool does not pin, as the lock pins it (its fingerprint checked).
+
+    Raises:
+        PinError: If the key file holds another key.
+    """
+    try:
+        entry = lock["repository_keys"]["keys"][name]
+        url = str(entry["urls"][0])
+    except (KeyError, IndexError, TypeError) as exc:
+        raise PinError(f"the lock pins no key {name} with a URL") from exc
+    data = network.download(url)
+    fingerprint = _single_fingerprint(data, url)
+    if fingerprint != entry["fingerprint"]:
+        raise PinError(f"{url} holds {fingerprint}, the lock pins {entry['fingerprint']}")
+    sources = [f"the lock's key, taken from {url}, its fingerprint checked"]
+    return KeyPin(name, tuple(entry["urls"]), fingerprint, openpgp.key_bytes(data), sources)
 
 
 def apt_sources(lock: Mapping[str, Any], sources: Mapping[str, Any]) -> list[AptSource]:
@@ -745,34 +749,65 @@ class GpuPin:
     notes: list[str] = field(default_factory=list)
 
 
-def _ubuntu_restricted(network: Network, codename: str) -> tuple[str, list[dict[str, str]]]:
-    """The restricted amd64 index of ``<codename>-updates``, its signature and sha256 checked."""
-    base = f"{UBUNTU_ARCHIVE}/dists/{codename}-updates"
-    signed = network.download(f"{base}/InRelease")
+def _ubuntu_keyring(network: Network) -> bytes:
     try:
-        keyring = network.read_file(UBUNTU_KEYRING)
+        return network.read_file(UBUNTU_KEYRING)
     except OSError as exc:
-        raise PinError(f"the Ubuntu archive keyring is missing ({exc}); run on Ubuntu") from exc
-    try:
-        network.gpgv(keyring, signed)
-    except PinError as exc:
-        raise PinError(f"{base}/InRelease: {exc}") from exc
-    release_text = _signed_text(signed)
-    for name, opener in (("Packages.xz", lzma.decompress), ("Packages.gz", gzip.decompress)):
-        path = f"restricted/binary-amd64/{name}"
-        expected = _release_sha256(release_text, path)
-        if not expected:
-            continue
-        data = network.download(f"{base}/{path}")
-        actual = hashlib.sha256(data).hexdigest()
-        if actual != expected:
-            raise PinError(f"{base}/{path} has sha256 {actual}, InRelease says {expected}")
-        note = (
-            f"{codename}-updates restricted: InRelease signed by the Ubuntu archive keyring; "
-            f"{name} sha256 {actual}"
+        raise PinError(
+            f"the Ubuntu archive keyring {UBUNTU_KEYRING} cannot be read ({exc}); install it"
+            " (Ubuntu's package ubuntu-keyring)"
+        ) from exc
+
+
+def _ubuntu_restricted(
+    network: Network, suite: str, keyring: bytes | None = None
+) -> tuple[str, list[dict[str, str]]]:
+    """The restricted amd64 index of a suite of Ubuntu's archive, signature and hash checked."""
+    ring = keyring if keyring is not None else _ubuntu_keyring(network)
+    base = f"{UBUNTU_ARCHIVE}/dists/{suite}"
+    repository = aptindex.Repository.of(UBUNTU_ARCHIVE, suite, "restricted", "amd64")
+    read = _index(network, _release(network, ring, base), repository)
+    name = read.url.rsplit("/", 1)[1]
+    note = (
+        f"{suite} restricted: InRelease signed by the Ubuntu archive keyring; "
+        f"{name} {read.field.lower()} {read.digest}"
+    )
+    return note, read.packages
+
+
+# Where the NVIDIA driver's pins are looked for in Ubuntu's archive, newest first.
+DRIVER_SUITES = ("{codename}-updates", "{codename}-security", "{codename}")
+
+
+def pin_driver(
+    network: Network, release: str, codename: str, packages: Sequence[str]
+) -> PackagePin:
+    """The newest versions of the NVIDIA driver's packages in Ubuntu's restricted pocket.
+
+    The suites of :data:`DRIVER_SUITES` are read (amd64, the driver's only
+    architecture in the lock), through the machine's Ubuntu archive keyring.
+
+    Raises:
+        PinError: If a suite does not check out or a package is in none.
+    """
+    keyring = _ubuntu_keyring(network)
+    found: dict[str, list[str]] = {}
+    index = []
+    for template in DRIVER_SUITES:
+        note, paragraphs = _ubuntu_restricted(network, template.format(codename=codename), keyring)
+        index.append(note)
+        for paragraph in paragraphs:
+            found.setdefault(paragraph.get("Package", ""), []).append(paragraph.get("Version", ""))
+    missing = [p for p in packages if p not in found]
+    if missing:
+        raise PinError(
+            f"Ubuntu's restricted pocket for {codename} has no package {', '.join(missing)}"
         )
-        return note, list(_paragraphs(opener(data).decode("utf-8")))
-    raise PinError(f"{base}/InRelease lists no restricted amd64 index")
+    versions = {p: newest(found[p]) for p in packages}
+    available = {p: set(v) for p, v in found.items()}
+    return PackagePin(
+        "nvidia_driver", release, {"x86_64": versions}, "ubuntu", index, {"x86_64": available}
+    )
 
 
 def _package(paragraphs: Iterable[Mapping[str, str]], name: str, version: str) -> Mapping[str, str]:
@@ -802,7 +837,7 @@ def pin_nvidia_gpus(
             version = nvidia_gpus.upstream_version(str(package_version))
             if release not in codenames:
                 raise PinError(f"no codename for {release} in platform_facts")
-            note, paragraphs = _ubuntu_restricted(network, codenames[release])
+            note, paragraphs = _ubuntu_restricted(network, f"{codenames[release]}-updates")
             common = _package(
                 paragraphs, nvidia_gpus.COMMON_PACKAGE.format(branch=branch), str(package_version)
             )
@@ -894,6 +929,66 @@ def render_gpu_pins(pins: Iterable[GpuPin], indent: str = "") -> list[str]:
     return out
 
 
+# What marks a pin gone from its index among the run's problems.
+GONE = " is no longer in its index; "
+
+
+def _gone(lock: Mapping[str, Any], pin: PackagePin, gone: list[str]) -> list[str]:
+    """Report every version the lock pins for the release that its indexes no longer list.
+
+    A package's one version is looked up in what the x86_64 indexes list, a
+    version per architecture in what its architecture's list.
+
+    Args:
+        lock: The lock.
+        pin: What the indexes list now, per architecture.
+        gone: Receives one line per version gone.
+
+    Returns:
+        A comment line per version gone, to print before the new pin.
+    """
+    pinned = lock["packages"][pin.component].get(pin.release)
+    if not isinstance(pinned, Mapping):
+        return []
+    lines = []
+    for package, version in pinned.items():
+        per_arch = isinstance(version, Mapping)
+        for arch, value in version.items() if per_arch else [("x86_64", version)]:
+            listed = pin.available.get(str(arch), {}).get(str(package), set())
+            if checks.MARKER_RE.search(str(value)) or str(value) in listed:
+                continue
+            label = f" ({arch})" if per_arch else ""
+            message = (
+                f"packages.{pin.component}.{pin.release}: the pinned {package}{label} {value}"
+                f"{GONE}apt cannot install it"
+            )
+            gone.append(message)
+            lines.append(f"# NOT IN THE INDEX: {message}")
+    return lines
+
+
+def render_package_pins(versions: Mapping[str, Mapping[str, str]]) -> str:
+    """A release's package pins in the lock's format, from the x86_64 and aarch64 versions.
+
+    A package whose versions are the same gets one version, the others
+    ``{x86_64: <version>, aarch64: <version>}``.
+
+    Args:
+        versions: ``{arch: {package: version}}`` for x86_64 and aarch64.
+
+    Returns:
+        The inside of the release's mapping (``incus: "1:6.0.7-..."``).
+    """
+    main, other = versions["x86_64"], versions["aarch64"]
+    parts = []
+    for package, version in main.items():
+        if other[package] == version:
+            parts.append(f'{package}: "{version}"')
+        else:
+            parts.append(f'{package}: {{x86_64: "{version}", aarch64: "{other[package]}"}}')
+    return ", ".join(parts)
+
+
 def run(  # noqa: PLR0912, PLR0915 - one block per section
     lock: Mapping[str, Any],
     sources: Mapping[str, Any],
@@ -904,7 +999,8 @@ def run(  # noqa: PLR0912, PLR0915 - one block per section
     """Pin every section.
 
     Returns:
-        The output in the lock's format, and one line per section that could not be pinned.
+        The output in the lock's format, and one line per section that could not be pinned
+        and per pinned version gone from its index (those last, each with :data:`GONE`).
     """
     out = [
         f"# make lock-pins {now.strftime('%Y-%m-%dT%H:%M:%SZ')}: read from public URLs;",
@@ -913,6 +1009,7 @@ def run(  # noqa: PLR0912, PLR0915 - one block per section
         f"verified_on: {now.date().isoformat()}",
     ]
     failed: list[str] = []
+    gone: list[str] = []
     keys: dict[str, KeyPin] = {}
     out.append("# --- repository_keys.keys")
     for name in KEY_URLS:
@@ -931,10 +1028,13 @@ def run(  # noqa: PLR0912, PLR0915 - one block per section
     for source in apt_sources(lock, sources):
         component, release, repo_name = source.component, source.release, source.repo_name
         lines = by_component.setdefault(component, [])
-        key = keys.get(str(source.repo["key"]))
+        key_name = str(source.repo["key"])
         try:
-            if key is None:
-                raise PinError(f"the key {source.repo['key']} of {repo_name} is not pinned")
+            if key_name not in keys:
+                if key_name in KEY_URLS:
+                    raise PinError(f"the key {key_name} of {repo_name} is not pinned")
+                keys[key_name] = lock_key(network, lock, key_name)
+            key = keys[key_name]
             if release not in codenames:
                 raise PinError(f"no codename for {release} in platform_facts")
             pin = pin_packages(network, source, codenames[release], key)
@@ -942,23 +1042,21 @@ def run(  # noqa: PLR0912, PLR0915 - one block per section
             failed.append(f"packages.{component}.{release}: {exc}")
             lines.append(f"# {release}: NOT PINNED: {exc}")
             continue
-        main, other = pin.versions["x86_64"], pin.versions["aarch64"]
-        rendered = ", ".join(f'{p}: "{v}"' for p, v in main.items())
-        lines.append(f"{release}: {{{rendered}}}")
+        lines += _gone(lock, pin, gone)
+        lines.append(f"{release}: {{{render_package_pins(pin.versions)}}}")
         lines += _comment(
             [f"InRelease of {repo_name} signed by {key.fingerprint}; {i}" for i in pin.index], "  "
         )
-        if other != main:
-            lines += _comment(
-                [
-                    "x86_64 versions above; aarch64 has "
-                    + ", ".join(f"{p} {v}" for p, v in other.items())
-                    + " (the lock has one version per release: aarch64 hosts cannot install it)"
-                ],
-                "  ",
-            )
-        else:
-            lines += _comment(["the same versions on x86_64 and aarch64"], "  ")
+        main, other = pin.versions["x86_64"], pin.versions["aarch64"]
+        differ = [p for p, v in main.items() if other[p] != v]
+        lines += _comment(
+            [
+                f"a version per architecture for {', '.join(differ)}: the builds differ"
+                if differ
+                else "the same versions on x86_64 and aarch64"
+            ],
+            "  ",
+        )
     for component in COMPONENTS:
         out.append(
             f"# --- packages.{component} (apt releases; layout: ansible/component-sources.yml)"
@@ -966,6 +1064,22 @@ def run(  # noqa: PLR0912, PLR0915 - one block per section
         out += by_component.get(component) or [
             "# no apt release of this component uses a vendor repository"
         ]
+    out.append("# --- packages.nvidia_driver (Ubuntu releases; Ubuntu's restricted pocket)")
+    for release, pinned in lock["packages"]["nvidia_driver"].items():
+        if not str(release).startswith("ubuntu-") or not isinstance(pinned, Mapping):
+            continue
+        try:
+            if release not in codenames:
+                raise PinError(f"no codename for {release} in platform_facts")
+            driver = pin_driver(network, str(release), codenames[release], list(pinned))
+        except (PinError, net.FetchError, OSError, ValueError) as exc:
+            failed.append(f"packages.nvidia_driver.{release}: {exc}")
+            out.append(f"# {release}: NOT PINNED: {exc}")
+            continue
+        out += _gone(lock, driver, gone)
+        rendered = ", ".join(f'{p}: "{v}"' for p, v in driver.versions["x86_64"].items())
+        out.append(f"{release}: {{{rendered}}}")
+        out += _comment([*driver.index, "amd64 only, as the lock pins it"], "  ")
     out.append("# --- containers.images.dcgm_exporter")
     try:
         image = pin_dcgm(network)
@@ -1023,11 +1137,15 @@ def run(  # noqa: PLR0912, PLR0915 - one block per section
             out.append(f'{kind}: {{public_key: "{public_key}", fingerprint: "{fingerprint}"}}')
     if failed:
         out.append(f"# {len(failed)} section(s) not pinned; see the NOT PINNED lines")
-    return "\n".join(out) + "\n", failed
+    if gone:
+        out.append(
+            f"# {len(gone)} pinned version(s) not in their index; see the NOT IN THE INDEX lines"
+        )
+    return "\n".join(out) + "\n", [*failed, *gone]
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Print the pins; 1 when any section cannot be pinned."""
+    """Print the pins; 1 when any section cannot be pinned or a pinned version left its index."""
     parser = argparse.ArgumentParser(prog="lock-pins", description=__doc__.splitlines()[0])
     parser.add_argument("--lock", type=Path, default=Path("versions.lock.yml"))
     parser.add_argument("--sources", type=Path, default=Path("ansible/component-sources.yml"))
@@ -1048,7 +1166,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     text, failed = run(lock, sources, facts, Network(), dt.datetime.now(dt.UTC))
     sys.stdout.write(text)
     for line in failed:
-        sys.stderr.write(f"lock-pins: not pinned: {line}\n")
+        label = "not in the index" if GONE in line else "not pinned"
+        sys.stderr.write(f"lock-pins: {label}: {line}\n")
     return 1 if failed else 0
 
 

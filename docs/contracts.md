@@ -453,14 +453,21 @@ clarification.
 
 ### Changes to the draft of contract v2
 
-The changes under `contract/` before the first infra release, which keep
-the version (see "Changing the contract" above).
+The changes before the first infra release, which keep the version: to
+`contract/` (see "Changing the contract" above), and to every file this page
+names as one a platform reads, such as the host profile and
+`bootstrap-state.json` ([Paths](#paths)), the fingerprint and the records
+([Provenance, records and keys](#provenance-records-and-keys)), the GPU
+arbiter's records ([Inference and the GPU](#inference)), and the principals
+and endpoints files
+([Principals and endpoints files](#principals-and-endpoints-files)).
 
 | Change | What a platform sees |
 | --- | --- |
 | reserved account names `pinka-postgres`, `pinka-otel-journald`, `pinka-node-exporter`, `pinka-gpu-exporter`, `pinka-opa` and `pinka-vllm` (`contract/reserved-names.yml` and the schema's `$defs.reserved_accounts_groups`): the accounts infra's containers run as, each its own; `pinka-monitor`, reserved already, is now the PostgreSQL exporter's | nothing: a platform's accounts start with its own name, and `pinka` is a reserved platform name, so no valid manifest becomes invalid |
 | the fingerprint's `software.golden_images` lists only the aliases infra verified against their export records (`contract/records/fingerprint.schema.json`) | an alias that is not golden, a platform's derived image or an alias a client created before infra built that version, no longer appears there; the golden fingerprints a platform takes from there are verified ones; a fingerprint cached before keeps its old shape until root computes it again (at boot, or `sudo pinka fingerprint`) |
 | each `golden_images` entry carries `type` and `nesting` from its blueprint's export record (required; `fingerprint` is always a string); the Golden images row names the blueprint and its export record as the source of nesting | a platform launches with `security.nesting=true` from the entry's `nesting`, not from the image's `requirements.nesting` property |
+| the host profile `/etc/pinka/host-profile.json` ([Paths](#paths)) has a new required boolean `pending_verification`: whether the matched OS rule of the support matrix is pending verification (no `make test-distros` run of the release has passed yet, or the latest run of one of its targets did not pass every stage); the tier, the outcome and the exit code stay as they were | one more key in the host profile; a profile written before has none until bootstrap writes it again ([Host profile](reference/host-profile.md)) |
 
 ## Resolutions
 
