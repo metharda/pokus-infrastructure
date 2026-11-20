@@ -66,12 +66,21 @@ incus_concurrent_targets: 2
 # operator's choice, not a share of the host). Its CPUs are those of
 # cpuset_targets when set (the platform pins targets inside it).
 incus_bench_limits: {}
+# The profiles merged key by key over their defaults: budget.yml sets the
+# profiles from it, and the limits below read it, so they evaluate the same
+# before the merge (the role's argument validation templates them first) and
+# after it. Derived; never set it (host_vars, group_vars or extra vars).
+incus_profiles_merged:
+  target_container: "{{ incus_target_container_defaults | combine(incus_target_container | default({}, true)) }}"
+  target_vm: "{{ incus_target_vm_defaults | combine(incus_target_vm | default({}, true)) }}"
+  probe_client: "{{ incus_probe_client_defaults | combine(incus_probe_client | default({}, true)) }}"
+  build_instance: "{{ incus_build_instance_defaults | combine(incus_build_instance | default({}, true)) }}"
 incus_bench_limits_defaults:
   limits.memory: >-
     {{ (incus_concurrent_targets | int)
-       * (((incus_target_vm if pinka_features.vm_targets | default(false) else incus_target_container).memory
-           | pinka_size_mib)
-          + (incus_probe_client.memory | pinka_size_mib)) }}MiB
+       * (((incus_profiles_merged.target_vm if pinka_features.vm_targets | default(false)
+            else incus_profiles_merged.target_container).memory | pinka_size_mib)
+          + (incus_profiles_merged.probe_client.memory | pinka_size_mib)) }}MiB
   limits.cpu: >-
     {{ (cpuset_targets | pinka_cpuset_cpus | length) if cpuset_targets
        else [(host_profile.hardware.cpu_threads_effective | int) - 2, 1] | max }}
@@ -80,18 +89,19 @@ incus_bench_limits_defaults:
   # target's state volume: what Incus counts (the Incus pool holds it, ADR-0017).
   limits.disk: >-
     {{ (incus_concurrent_targets | int)
-       * (((incus_target_vm.root_size | pinka_size_bytes) + (incus_target_vm.size_state | pinka_size_bytes)
+       * (((incus_profiles_merged.target_vm.root_size | pinka_size_bytes)
+           + (incus_profiles_merged.target_vm.size_state | pinka_size_bytes)
            if pinka_features.vm_targets | default(false)
-           else (incus_target_container.root_size | pinka_size_bytes))
-          + (incus_probe_client.root_size | pinka_size_bytes)) }}B
+           else (incus_profiles_merged.target_container.root_size | pinka_size_bytes))
+          + (incus_profiles_merged.probe_client.root_size | pinka_size_bytes)) }}B
 # Limits of the build project: two build instances' root disks with their
 # state volumes (a build instance may be a VM), infra's build instance and one
 # build of the platform's at a time (the Incus pool holds it).
 incus_build_limits: {}
 incus_build_limits_defaults:
   limits.disk: >-
-    {{ 2 * ((incus_build_instance.root_size | pinka_size_bytes)
-            + (incus_build_instance.size_state | pinka_size_bytes)) }}B
+    {{ 2 * ((incus_profiles_merged.build_instance.root_size | pinka_size_bytes)
+            + (incus_profiles_merged.build_instance.size_state | pinka_size_bytes)) }}B
 # Defaults of the instance profiles; the platform sets per-blueprint values.
 incus_target_container: {}
 incus_target_container_defaults: {cpu: "1", memory: 1GiB, root_size: 8GiB}

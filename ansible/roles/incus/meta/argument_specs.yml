@@ -93,6 +93,13 @@ argument_specs:
         description: >-
           Overrides of bench's project limits, merged key by key with incus_bench_limits_defaults;
           a limits.disk set to null or empty is refused.
+      incus_profiles_merged:
+        type: dict
+        description: >-
+          Derived; never set it (in host_vars, group_vars or extra vars): incus_target_container,
+          incus_target_vm, incus_probe_client and incus_build_instance merged key by key over
+          their defaults, under the keys target_container, target_vm, probe_client and
+          build_instance; the defaults of bench's and build's limits are computed from it.
       incus_bench_limits_defaults:
         type: dict
         description: >-

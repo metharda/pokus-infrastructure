@@ -6,15 +6,16 @@
 # includes this file before it writes the endpoints file.
 
 # Each limits and sizes mapping of host_vars is merged key by key with its
-# defaults, the profiles first: the defaults of bench's and build's limits
-# are computed from them. Preflight's pool sum takes the same merged values
-# (the plan); a limits.disk set to null or empty is refused.
+# defaults, the profiles first (their one merge is incus_profiles_merged in
+# the defaults): the defaults of bench's and build's limits are computed from
+# it. Preflight's pool sum takes the same merged values (the plan); a
+# limits.disk set to null or empty is refused.
 - name: Merge the profiles' sizes with their defaults
   ansible.builtin.set_fact:
-    incus_target_container: "{{ incus_target_container_defaults | combine(incus_target_container | default({}, true)) }}"
-    incus_target_vm: "{{ incus_target_vm_defaults | combine(incus_target_vm | default({}, true)) }}"
-    incus_probe_client: "{{ incus_probe_client_defaults | combine(incus_probe_client | default({}, true)) }}"
-    incus_build_instance: "{{ incus_build_instance_defaults | combine(incus_build_instance | default({}, true)) }}"
+    incus_target_container: "{{ incus_profiles_merged.target_container }}"
+    incus_target_vm: "{{ incus_profiles_merged.target_vm }}"
+    incus_probe_client: "{{ incus_profiles_merged.probe_client }}"
+    incus_build_instance: "{{ incus_profiles_merged.build_instance }}"
     incus_user_instance: "{{ incus_user_instance_defaults | combine(incus_user_instance | default({}, true)) }}"
 
 - name: Merge the projects' limits with their defaults

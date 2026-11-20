@@ -883,3 +883,60 @@ def test_an_explicit_size_below_the_pools_is_refused(
     assert not holds(refuse, {**scope, "incus_pool_size": "auto"})
     create = objects_task("Create the storage pool {{ incus_pool_name }}")
     assert create["pinka_incus_object"]["update"] is False
+
+
+LIMIT_KEYS = ("limits.memory", "limits.cpu", "limits.instances", "limits.disk")
+
+
+@pytest.mark.parametrize("vm_targets", [True, False])
+@pytest.mark.parametrize("case", sorted(OVERRIDES))
+def test_every_argument_templates_before_the_merge(vm_targets: bool, case: str) -> None:
+    # Ansible validates a role's arguments, templating each one, before any
+    # task runs: every option must template from the defaults and host_vars
+    # alone, before budget.yml merges them, to what the projects get after it.
+    host_vars = OVERRIDES[case]
+    spec = load_yaml(ROLES / "incus" / "meta" / "argument_specs.yml")
+    researchers = [{"name": "researcher1"}]
+    variables = incus_vars(vm_targets=vm_targets, researchers=researchers, **host_vars)
+    before: dict[str, Any] = {}
+    for option in spec["argument_specs"]["main"]["options"]:
+        if not option.startswith("incus_") and option not in variables:
+            continue  # the play passes it (bootstrap's options), not the role
+        assert option in variables, option
+        before[option] = template_value(variables[option], variables)
+    facts = run_set_facts(ROLES / "incus" / "tasks" / "desired.yml", variables)
+    projects = {p["name"]: p["config"] for p in facts["incus_projects"]}
+    for name in ("bench", "build"):
+        expected = {
+            **before[f"incus_{name}_limits_defaults"],
+            **(before[f"incus_{name}_limits"] or {}),
+        }
+        rendered = {k: v for k, v in projects[name].items() if k in LIMIT_KEYS}
+        assert rendered == {k: str(v) for k, v in expected.items()}, name
+    # the profiles merged key by key, computed here, as budget.yml leaves them
+    for profile in ("target_container", "target_vm", "probe_client", "build_instance"):
+        merged = {
+            **variables[f"incus_{profile}_defaults"],
+            **(host_vars.get(f"incus_{profile}") or {}),
+        }
+        assert facts[f"incus_{profile}"] == merged, profile
+        assert before["incus_profiles_merged"][profile] == merged, profile
+    # the rendered profiles carry the merged sizes
+    rendered_profiles = {
+        "target_container": by_name(facts["incus_profiles"], "target-container", "bench"),
+        "probe_client": by_name(facts["incus_profiles"], "probe-client", "bench"),
+        "build_instance": by_name(facts["incus_profiles"], "build", "build"),
+    }
+    if vm_targets:
+        rendered_profiles["target_vm"] = by_name(facts["incus_profiles"], "target-vm", "bench")
+    for profile, rendered_profile in rendered_profiles.items():
+        sizes = facts[f"incus_{profile}"]
+        assert rendered_profile["config"]["limits.memory"] == sizes["memory"], profile
+        assert rendered_profile["devices"]["root"]["size"] == sizes["root_size"], profile
+    if vm_targets:
+        root = rendered_profiles["target_vm"]["devices"]["root"]
+        assert root["size.state"] == facts["incus_target_vm"]["size_state"]
+    if case == "another key":
+        # a target's memory plus the probe client's, for each concurrent target
+        target = 4096 if vm_targets else 1024
+        assert projects["bench"]["limits.memory"] == f"{2 * (target + 512)}MiB"

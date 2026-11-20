@@ -1570,6 +1570,21 @@ Overrides of bench's project limits, merged key by key with incus_bench_limits_d
 - Type: `dict`
 - Default: `{}`
 
+### `incus_profiles_merged`
+
+Derived; never set it (in host_vars, group_vars or extra vars): incus_target_container, incus_target_vm, incus_probe_client and incus_build_instance merged key by key over their defaults, under the keys target_container, target_vm, probe_client and build_instance; the defaults of bench's and build's limits are computed from it.
+
+- Type: `dict`
+- Default:
+
+    ```yaml
+    {target_container: '{{ incus_target_container_defaults | combine(incus_target_container |
+        default({}, true)) }}', target_vm: '{{ incus_target_vm_defaults | combine(incus_target_vm
+        | default({}, true)) }}', probe_client: '{{ incus_probe_client_defaults | combine(incus_probe_client
+        | default({}, true)) }}', build_instance: '{{ incus_build_instance_defaults | combine(incus_build_instance
+        | default({}, true)) }}'}
+    ```
+
 ### `incus_bench_limits_defaults`
 
 Project limits of bench (memory and disk from the concurrent targets, CPUs from cpuset_targets or the host's CPUs).
@@ -1578,15 +1593,16 @@ Project limits of bench (memory and disk from the concurrent targets, CPUs from 
 - Default:
 
     ```yaml
-    {limits.memory: "{{ (incus_concurrent_targets | int)\n   * (((incus_target_vm if pinka_features.vm_targets\
-        \ | default(false) else incus_target_container).memory\n       | pinka_size_mib)\n   \
-        \   + (incus_probe_client.memory | pinka_size_mib)) }}MiB", limits.cpu: "{{ (cpuset_targets\
-        \ | pinka_cpuset_cpus | length) if cpuset_targets\n   else [(host_profile.hardware.cpu_threads_effective\
-        \ | int) - 2, 1] | max }}", limits.instances: '40', limits.disk: "{{ (incus_concurrent_targets\
-        \ | int)\n   * (((incus_target_vm.root_size | pinka_size_bytes) + (incus_target_vm.size_state\
-        \ | pinka_size_bytes)\n       if pinka_features.vm_targets | default(false)\n       else\
-        \ (incus_target_container.root_size | pinka_size_bytes))\n      + (incus_probe_client.root_size\
-        \ | pinka_size_bytes)) }}B"}
+    {limits.memory: "{{ (incus_concurrent_targets | int)\n   * (((incus_profiles_merged.target_vm\
+        \ if pinka_features.vm_targets | default(false)\n        else incus_profiles_merged.target_container).memory\
+        \ | pinka_size_mib)\n      + (incus_profiles_merged.probe_client.memory | pinka_size_mib))\
+        \ }}MiB", limits.cpu: "{{ (cpuset_targets | pinka_cpuset_cpus | length) if cpuset_targets\n\
+        \   else [(host_profile.hardware.cpu_threads_effective | int) - 2, 1] | max }}", limits.instances: '40',
+      limits.disk: "{{ (incus_concurrent_targets | int)\n   * (((incus_profiles_merged.target_vm.root_size\
+        \ | pinka_size_bytes)\n       + (incus_profiles_merged.target_vm.size_state | pinka_size_bytes)\n\
+        \       if pinka_features.vm_targets | default(false)\n       else (incus_profiles_merged.target_container.root_size\
+        \ | pinka_size_bytes))\n      + (incus_profiles_merged.probe_client.root_size | pinka_size_bytes))\
+        \ }}B"}
     ```
 
 ### `incus_build_limits`
@@ -1604,8 +1620,8 @@ Project limits of build (disk for two build instances with their state volumes).
 - Default:
 
     ```yaml
-    {limits.disk: "{{ 2 * ((incus_build_instance.root_size | pinka_size_bytes)\n        + (incus_build_instance.size_state\
-        \ | pinka_size_bytes)) }}B"}
+    {limits.disk: "{{ 2 * ((incus_profiles_merged.build_instance.root_size | pinka_size_bytes)\n\
+        \        + (incus_profiles_merged.build_instance.size_state | pinka_size_bytes)) }}B"}
     ```
 
 ### `incus_target_container`
