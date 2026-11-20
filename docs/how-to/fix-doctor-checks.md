@@ -475,12 +475,229 @@ grows and how much the retention settings allow; lower them
 `observability_tempo_retention`, `backup_pgdump_keep`), delete training runs
 or datasets that are no longer needed, or give the file system more space.
 
-## `incus.pool`: wrong backend or little free space {#check-incus-pool}
+## `incus.pool`: the pool has another driver {#check-incus-pool}
 
-The Incus pool uses another driver than preflight chose, or has less free
-space than `doctor_min_pool_free_gib`. Delete unused instances and images
-(`incus list --all-projects`, `incus image list`) or grow the pool. The pool
-is never recreated by bootstrap.
+The Incus pool `pinka-targets` uses another driver than LVM thin, the only
+one pinka creates
+([ADR-0017](../adr/0017-lvm-thin-only-for-the-incus-pool.md)). Bootstrap
+never recreates a pool, so a pool made before (or by hand) keeps its driver.
+Move the instances and images you need elsewhere, delete the pool
+(`incus storage delete pinka-targets` once nothing uses it), and run
+bootstrap again: it creates the pool as an LVM thin pool.
+
+## `incus.pool.undersized`: the pool is smaller than its requirement {#check-incus-pool-undersized}
+
+The thin pool's data is smaller than the sum of everything that may be
+written to it, less the thin pool's metadata and LVM's overhead, which lie
+outside it. Preflight computes the sum for the stored plan: the projects'
+disk limits, the image volumes, the metadata, LVM's overhead and the
+headroom ([Capacity planning](../explanation/capacity-planning.md)). Doctor
+measures the thin pool, not the volume group or the loop file: a volume
+group grown without extending the thin pool holds space the pool cannot use.
+pinka never resizes a pool, so a pool created before a change of the plan
+(more researchers, a larger `incus_user_limits` `limits.disk`, a larger
+`incus_pool_volume_size`) keeps its size. Grow it, or lower the projects'
+limits (`incus_concurrent_targets`, the profiles' root disks, the
+researchers' `incus_user_limits` `limits.disk`, `incus_pool_volume_size`)
+and run bootstrap again:
+
+- **A loop pool:** `sudo incus storage set pinka-targets size=<size>`,
+  with the size doctor names; Incus grows the file and the thin pool. The
+  size must be larger than the pool's current size: Incus refuses a smaller
+  size. Run bootstrap again: it preallocates the grown file.
+- **A dedicated device:** add a disk to the pool's volume group
+  (`sudo vgextend pinka-targets <device>`) and extend the thin pool into it
+  (`sudo lvextend -l +100%FREE pinka-targets/IncusThinPool`).
+
+`<size>` and `<device>` are the size doctor names and the added disk's
+`/dev/disk/by-id/` path. Then run `sudo pinka doctor` again.
+
+## `incus.pool.space_low`: the uncommitted space is low {#check-incus-pool-space_low}
+
+The pool's uncommitted space, its thin pool's data size minus everything
+that may still be written to it, is below three image volumes (three times
+the pool's `volume.size`): room for two more images and a build's temporary
+one. The projects' disk limits are caps; what fills the headroom is images:
+images researchers import into their personal projects and use, and images
+the platform derives in `build`
+([How doctor counts the Incus pool](../explanation/incus-pool-accounting.md)).
+Doctor's message names the count by part.
+
+1. List the images and the projects' instances and snapshots:
+
+    <!-- qa:skip reason="needs a lab host with Incus" -->
+    ```bash
+    sudo incus image list --all-projects
+    sudo incus list --all-projects
+    ```
+
+2. Delete images no one uses (`sudo incus image delete <fingerprint>
+   --project <project>`), lower a project's `limits.disk` if it is larger
+   than it needs, or grow the pool as under
+   [`incus.pool.undersized`](#check-incus-pool-undersized).
+
+## `incus.pool.overcommitted`: the pool cannot hold what is promised {#check-incus-pool-overcommitted}
+
+The uncommitted space is at or below zero: if the projects' instances grew
+to the limits they were given, the thin pool would fill, and a full thin
+pool stops every volume at once. Besides images, a likely cause is a backup
+import: Incus restores a backup's snapshots, which no limit counts, and a
+VM's disk at the backup's own size
+([How doctor counts the Incus pool](../explanation/incus-pool-accounting.md#what-incus-does-not-count)).
+Doctor's message names the count by part. Free space now as under
+[`incus.pool.space_low`](#check-incus-pool-space_low): list the snapshots too
+(`sudo incus snapshot list <instance> --project <project>`) and delete the
+imported ones nobody needs (`sudo incus snapshot delete <instance>
+<snapshot> --project <project>`), or grow the pool.
+
+## `incus.pool.metadata_high`: the thin pool's metadata is 80 % used {#check-incus-pool-metadata_high}
+
+The thin pool's metadata volume is at or above 80 % (lvmthin(7): LVM's own
+first warning), or its usage cannot be read (see
+[`incus.pool.metadata_full`](#check-incus-pool-metadata_full)). Each volume and snapshot takes metadata; delete unused
+images, snapshots and instances. To make room, extend the metadata volume
+(`sudo lvextend --poolmetadatasize +1G pinka-targets/IncusThinPool`, which
+needs free space in the volume group).
+
+## `incus.pool.metadata_full`: the thin pool's metadata is 90 % used or unreadable {#check-incus-pool-metadata_full}
+
+The metadata volume is at or above 90 %, or its usage cannot be read (the
+thin pool is not active). A full metadata volume stops every thin volume of
+the pool: extend it now as under
+[`incus.pool.metadata_high`](#check-incus-pool-metadata_high). If the usage
+cannot be read, check the pool with `sudo lvs -a pinka-targets` and
+`sudo incus storage info pinka-targets`.
+
+## `incus.pool.loop_allocated`: the loop file is not fully allocated {#check-incus-pool-loop_allocated}
+
+A loop pool's file has fewer blocks allocated than its size: part of the
+pool is not backed by the file system it lives on, and if that file system
+fills, the thin pool fails. Bootstrap preallocates the file (`fallocate`)
+when it creates the pool and whenever it finds the file sparse, for
+instance after `incus storage set pinka-targets size=...` grew it. Check the
+file and run bootstrap again:
+
+<!-- qa:skip reason="needs a lab host with Incus" -->
+```bash
+sudo stat --format='%s bytes, %b blocks of %B' /var/lib/incus/disks/pinka-targets.img
+sudo ./bootstrap/bootstrap.sh --machine <machine> --tags incus
+```
+
+`<machine>` is the name of this host's host_vars file. If bootstrap cannot
+allocate the file, its file system lacks the space: free space there or
+move the pool to a dedicated disk.
+
+## `incus.pool.discards`: the loop pool passes discards down {#check-incus-pool-discards}
+
+A loop pool's thin pool must not pass discards down to its loop file: a
+discard would punch a hole in the preallocated file, and the space it gives
+back would no longer be the pool's. With `nopassdown` the thin pool
+still frees the discarded blocks for reuse inside the pool. Bootstrap sets
+it on new and existing loop pools; LVM changes it on an active pool. Check
+and set it:
+
+<!-- qa:skip reason="needs a lab host with Incus" -->
+```bash
+sudo lvs -o lv_name,discards pinka-targets
+sudo lvchange --discards nopassdown pinka-targets/IncusThinPool
+```
+
+Then run [`incus.pool.loop_allocated`](#check-incus-pool-loop_allocated)'s
+fix if the file has holes. A pool on a dedicated device keeps LVM's default
+and is not checked.
+
+## `incus.pool.loop_space_low`: the reserve beside the loop file is in use {#check-incus-pool-loop_space_low}
+
+The file system that holds a loop pool's file has less free space than the
+reserve preflight leaves beside the file (50 GiB by default); preflight warns
+of the same in its summary. A loop pool's
+file is preallocated, but the host's file system can still take space under
+it: on btrfs a snapshot of the subvolume that holds the file, a scrub or a
+balance makes later writes into the file take new space; and anything else
+on that file system (logs, packages, the lab's other stores) shares the
+same free space
+([How doctor counts the Incus pool](../explanation/incus-pool-accounting.md#under-a-loop-pool)).
+Free space on that file system (delete old snapshots of its subvolume, logs
+and files nobody needs), or move the pool to a dedicated device
+(`incus_pool_source: device`), which does not depend on the host's free
+space. On WSL this check measures the distribution's ext4, not the Windows
+drive that holds its virtual disk: keep at least the pool's size free on
+that drive ([WSL2 hosts](../providers/wsl2.md)).
+
+## `incus.pool.loop_space_full`: the loop file's file system is nearly full {#check-incus-pool-loop_space_full}
+
+The file system that holds a loop pool's file has less free space than three
+image volumes (three times the pool's `volume.size`, 9 GiB by default): a
+write into the pool that needs new space there may fail, and a thin pool
+whose backing write fails stops its volumes. Preflight reports the same
+before bootstrap changes anything (`needs_action`). Free space now as under
+[`incus.pool.loop_space_low`](#check-incus-pool-loop_space_low).
+
+## `incus.pool.loop_nocow`: the loop file on btrfs has no No_COW {#check-incus-pool-loop_nocow}
+
+A loop pool's file on btrfs lacks the No_COW attribute: every write into it
+can take new space on the file system. Bootstrap creates a new pool's file
+with No_COW (it sets the attribute on its directory first), but No_COW
+cannot be set on a file that already holds data. Check it, then re-create
+the pool's file, or move the pool to a dedicated device:
+
+<!-- qa:skip reason="needs a lab host with Incus" -->
+```bash
+lsattr /var/lib/incus/disks/pinka-targets.img
+```
+
+To re-create it, Incus must find nothing that uses the pool:
+
+1. Export the instances and custom volumes you need (`sudo incus export
+   <instance> --project <project>`, `sudo incus storage volume export
+   pinka-targets <volume> --project <project>`), then delete them.
+2. Remove the root disk on this pool from every profile that has one
+   (`sudo incus profile device remove <profile> root --project <project>`;
+   `incus storage show pinka-targets` lists them under `used_by`).
+3. Delete the pool (`sudo incus storage delete pinka-targets`); Incus deletes
+   its file.
+4. Run bootstrap again: it creates the pool with a No_COW file and gives the
+   profiles their root disks back; then import what you exported.
+
+`<instance>`, `<volume>`, `<profile>` and `<project>` are the names
+`incus storage show pinka-targets` lists. Avoid snapshots of the subvolume
+that holds the file (snapper, timeshift): after one, writes into the file
+take new space even with No_COW.
+
+## `incus.pool.buckets`: a storage bucket is on the pool {#check-incus-pool-buckets}
+
+A storage bucket exists on the pool. No project limit counts buckets, so a
+bucket could fill the pool past what is promised to the projects; pinka
+installs no MinIO, which Incus needs to serve buckets, and doctor fails on
+any bucket. Find and delete them:
+
+<!-- qa:skip reason="needs a lab host with Incus" -->
+```bash
+sudo incus storage bucket list pinka-targets --all-projects
+sudo incus storage bucket delete pinka-targets <bucket> --project <project>
+```
+
+`<bucket>` and `<project>` are a bucket's name and project from the list.
+
+Doctor recognizes a bucket by its LVM volume (`buckets_...`); see
+[How doctor counts the Incus pool](../explanation/incus-pool-accounting.md).
+
+## `doctor.periodic`: the periodic run's report is old or missing {#check-doctor-periodic}
+
+Doctor's periodic run (`pinka-doctor.timer`, every
+`doctor_periodic_interval_minutes`) writes its report to
+`/var/lib/pinka/doctor/last.json`. The report is missing or unreadable, or
+older than twice the interval: the timer stopped, or the run fails.
+
+<!-- qa:skip reason="needs a lab host" -->
+```bash
+systemctl status pinka-doctor.timer pinka-doctor.service
+journalctl -u pinka-doctor.service -n 50
+sudo systemctl start pinka-doctor.service
+```
+
+Exit status 3 means doctor itself failed (its message is in the journal);
+1 and 2 are results, listed in the report and by `sudo pinka status`.
 
 ## `incus.objects`: a project or profile is missing {#check-incus-objects}
 

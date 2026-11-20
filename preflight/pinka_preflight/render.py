@@ -284,7 +284,7 @@ def render(report: Mapping[str, Any], *, color: bool = False) -> str:  # noqa: P
     lines.append(
         f"  cgroup2 {_fmt(caps['cgroup2'])}, tun {_fmt(caps['tun'])},"
         f" KVM usable {_fmt(caps['kvm_usable'])},"
-        f" btrfs {_fmt(caps['btrfs'])}, dm_thin_pool {_fmt(caps['dm_thin_pool'])},"
+        f" dm_thin_pool {_fmt(caps['dm_thin_pool'])},"
         f" Secure Boot {caps['secure_boot']}"
     )
     lines.append(

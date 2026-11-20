@@ -407,6 +407,7 @@ def run_preflight(
         choices={
             "nvidia_driver_mode": args.nvidia_driver,
             "mok_enrollment_accepted": args.accept_mok_enrollment,
+            "node_role": str(choices.get("node_role") or "full"),
         },
     )
     apply_requirements(

@@ -5,7 +5,7 @@
 # service from an image preloaded by digest.
 schema_version: 1
 name: docker-host
-version: "1.0.1"
+version: "1.0.2"
 description: Docker Engine with one containerized web service on port 8080
 base: {blueprint: base}
 type: container

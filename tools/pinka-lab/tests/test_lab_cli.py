@@ -6,10 +6,12 @@ import contextlib
 import io
 import json
 import unittest
+from unittest import mock
 
 from labfakes import FakeSystem, lab_data
 
-from pinka_lab import __version__
+from pinka_lab import __version__, cli
+from pinka_lab.checks import CHECKS
 from pinka_lab.cli import build_parser, main
 
 CONFIG = "/etc/pinka/lab.json"
@@ -97,8 +99,36 @@ class MainTest(unittest.TestCase):
 
     def test_doctor_needs_root(self) -> None:
         code, _, err = call(["doctor"], configured(euid=1000))
-        self.assertEqual(code, 2)
+        self.assertEqual(code, 2)  # a usage error, as before
         self.assertIn("doctor needs root", err)
+
+    def test_doctor_only_and_report(self) -> None:
+        system = configured()
+        code, out, _ = call(
+            ["doctor", "--only", "incus.pool,disk.free_space", "--report", "/tmp/r/last.json"],
+            system,
+        )
+        report = json.loads(system.written["/tmp/r/last.json"][0])
+        self.assertEqual(system.written["/tmp/r/last.json"][1], 0o600)
+        wanted = [c.id for c in CHECKS if c.id in ("incus.pool", "disk.free_space")]
+        self.assertEqual([c["id"] for c in report["checks"]], wanted)  # in doctor's order
+        self.assertEqual(report["exit_code"], code)
+        self.assertIn("incus.pool", out)
+
+    def test_doctor_only_refuses_unknown_ids(self) -> None:
+        code, _, err = call(["doctor", "--only", "incus.pool,no.such"], configured())
+        self.assertEqual(code, 2)  # a usage error
+        self.assertIn("unknown check IDs: no.such", err)
+        code, _, err = call(["doctor", "--only", ","], configured())
+        self.assertEqual(code, 2)
+        self.assertIn("no check IDs given", err)
+
+    def test_a_doctor_crash_is_never_a_result(self) -> None:
+        system = configured()
+        with mock.patch.object(cli, "run_checks", side_effect=RuntimeError("boom")):
+            code, _, err = call(["doctor"], system)
+        self.assertEqual(code, 3)
+        self.assertIn("doctor failed: RuntimeError: boom", err)
 
     def test_doctor_reports_every_check(self) -> None:
         system = configured()

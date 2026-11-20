@@ -2,7 +2,6 @@
   "env_class": "baremetal",
   "family": "debian",
   "features": {
-    "btrfs_pool": true,
     "dcgm_metrics": true,
     "gpu_inference": true,
     "vm_targets": true

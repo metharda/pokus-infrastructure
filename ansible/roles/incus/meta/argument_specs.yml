@@ -33,9 +33,20 @@ argument_specs:
         type: str
         default: auto
         description: >-
-          Size of a loop pool, such as 300GiB, or auto: the size preflight computed from the golden
-          images, the concurrent targets' root disks and the free space (host profile
-          requirements.pool). An existing pool keeps its size.
+          Size of a loop pool, such as 300GiB, or auto: the sum preflight computed of everything that
+          may be written to the pool (host profile requirements.pool); an explicit size must hold it.
+          An existing pool keeps its size; one smaller than the sum needs an operator action.
+      incus_pool_volume_size:
+        type: str
+        default: auto
+        description: >-
+          The pool's volume.size, the size of every image volume, such as 4GiB, or auto: just above
+          the largest unpacked image (host profile requirements.pool). Set on new and existing pools;
+          Incus refuses an image larger than it.
+      incus_pool_metadata_size:
+        type: str
+        default: 1GiB
+        description: The thin pool's metadata volume, set when the pool is created.
       incus_pool_device:
         type: str
         default: ""
@@ -78,30 +89,75 @@ argument_specs:
         description: Targets that run at once; they size the bench project's memory and the memory preflight requires.
       incus_bench_limits:
         type: dict
-        description: Project limits of bench (memory from the concurrent targets, CPUs from cpuset_targets or the host's CPUs).
+        default: {}
+        description: >-
+          Overrides of bench's project limits, merged key by key with incus_bench_limits_defaults;
+          a limits.disk set to null or empty is refused.
+      incus_bench_limits_defaults:
+        type: dict
+        description: >-
+          Project limits of bench (memory and disk from the concurrent targets, CPUs from
+          cpuset_targets or the host's CPUs).
+      incus_build_limits:
+        type: dict
+        default: {}
+        description: >-
+          Overrides of build's project limits, merged key by key with incus_build_limits_defaults;
+          a limits.disk set to null or empty is refused.
+      incus_build_limits_defaults:
+        type: dict
+        description: Project limits of build (disk for two build instances with their state volumes).
       incus_target_container:
+        type: dict
+        default: {}
+        description: Overrides of the target-container profile's sizes, merged key by key with incus_target_container_defaults.
+      incus_target_container_defaults:
         type: dict
         default: {cpu: "1", memory: 1GiB, root_size: 8GiB}
         description: Default limits and root disk of the target-container profile.
       incus_target_vm:
         type: dict
-        default: {cpu: "2", memory: 2GiB, root_size: 16GiB}
-        description: Default limits and root disk of the target-vm profile.
+        default: {}
+        description: Overrides of the target-vm profile's sizes, merged key by key with incus_target_vm_defaults.
+      incus_target_vm_defaults:
+        type: dict
+        default: {cpu: "2", memory: 2GiB, root_size: 16GiB, size_state: 500MiB}
+        description: Default limits, root disk and state volume of the target-vm profile.
       incus_probe_client:
+        type: dict
+        default: {}
+        description: Overrides of the probe-client profile's sizes, merged key by key with incus_probe_client_defaults.
+      incus_probe_client_defaults:
         type: dict
         default: {cpu: "1", memory: 512MiB, root_size: 4GiB}
         description: Limits and root disk of the probe-client profile.
       incus_build_instance:
         type: dict
-        default: {cpu: "2", memory: 2GiB, root_size: 16GiB}
-        description: Limits and root disk of the build profile.
+        default: {}
+        description: Overrides of the build profile's sizes, merged key by key with incus_build_instance_defaults.
+      incus_build_instance_defaults:
+        type: dict
+        default: {cpu: "2", memory: 2GiB, root_size: 16GiB, size_state: 500MiB}
+        description: Limits, root disk and state volume (for a VM build) of the build profile.
       incus_user_limits:
         type: dict
-        default: {limits.instances: "5", limits.cpu: "4", limits.memory: 8GiB, limits.disk: 60GiB}
-        description: Project limits of each personal project.
+        default: {}
+        description: >-
+          Overrides of each personal project's limits, merged key by key with
+          incus_user_limits_defaults; a limits.disk set to null or empty is refused.
+      incus_user_limits_defaults:
+        type: dict
+        default: {limits.instances: "5", limits.cpu: "4", limits.memory: 8GiB, limits.disk: 20GiB}
+        description: >-
+          Project limits of each personal project; limits.disk counts in full, once per researcher,
+          in the Incus pool's size.
       incus_user_instance:
         type: dict
-        default: {cpu: "1", memory: 1GiB, root_size: 10GiB}
+        default: {}
+        description: Overrides of personal instances' defaults, merged key by key with incus_user_instance_defaults.
+      incus_user_instance_defaults:
+        type: dict
+        default: {cpu: "1", memory: 1GiB, root_size: 4GiB}
         description: Default limits and root disk of instances in personal projects.
       incus_cert_dir:
         type: path

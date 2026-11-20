@@ -346,7 +346,7 @@ def test_a_resume_at_a_replaced_screen_goes_on_at_the_capacity_plan(repo: Paths,
             FITS,
             [
                 ("RAM", "fits", "fits · needs 8.0-37.2 GiB (compared at 0.94), has 64.0 GiB"),
-                ("Disk /", "fits", "fits · needs 148.3 GiB, has 400.0 GiB free"),
+                ("Disk /", "fits", "fits · needs 263.3 GiB, has 400.0 GiB free"),
                 ("Disk /srv", "fits", "fits · needs 3.7 GiB, has 500.0 GiB free"),
                 ("VRAM serving", "fits", "fits · needs 11500 MiB, has 12282 MiB"),
                 ("VRAM training", "fits", "fits · needs 8000 MiB, has 12282 MiB"),
@@ -378,7 +378,7 @@ def test_a_resume_at_a_replaced_screen_goes_on_at_the_capacity_plan(repo: Paths,
                     "degraded",
                     "degraded, 0.1 GiB short · needs 8.0-17.2 GiB (compared at 0.94), has 16.1 GiB",
                 ),
-                ("Disk /", "fits", "fits · needs 148.3 GiB, has 400.0 GiB free"),
+                ("Disk /", "fits", "fits · needs 263.3 GiB, has 400.0 GiB free"),
                 ("Disk /srv", "fits", "fits · needs 3.7 GiB, has 500.0 GiB free"),
                 ("VRAM serving", "fits", "fits · needs 11500 MiB, has 12282 MiB"),
                 ("VRAM training", "fits", "fits · needs 8000 MiB, has 12282 MiB"),
@@ -634,9 +634,10 @@ def test_a_shortfall_of_0_01_gib_reads_as_preflight_rounds_it() -> None:
     profile = preflight(fixture, ["--plan", plan_file(fixture)]).profile
     root = next(r for r in capacity.rows(profile) if r.key == "disk:/")
     # Where it falls short the need reads rounded up and the free space down.
-    assert root.line == "does not fit, 0.1 GiB short · needs 94.6 GiB, has 94.5 GiB free"
-    item = next(i for i in root.items if i.startswith("the free space kept beside"))
-    assert item.endswith("(estimated), missing 0.1 GiB")
+    assert root.line == "does not fit, 0.1 GiB short · needs 264.6 GiB, has 264.5 GiB free"
+    # The largest item carries the shortfall: the 200 GiB loop file.
+    item = next(i for i in root.items if i.startswith("the Incus pool (loop file)"))
+    assert item.endswith("(configured), missing 0.1 GiB")
 
 
 @pytest.mark.parametrize("fixture", [FITS, "ubuntu2404-inference-auto-small-gpu"])
@@ -1236,9 +1237,7 @@ def test_a_forced_host_keeps_its_yellow_bars_and_their_reasons(repo: Paths) -> N
     # for what is degraded, and neither does the page; the yellow bar and its reason stay.
     forced = copy.deepcopy(preflight(DEGRADED).profile)
     forced["outcome"] = "unsupported"
-    forced["unsupported_reasons"] = preflight("ubuntu2404-no-btrfs-no-dmthin").profile[
-        "unsupported_reasons"
-    ]
+    forced["unsupported_reasons"] = preflight("ubuntu2404-cgroup-v1").profile["unsupported_reasons"]
     installer = on_capacity(repo, FakeHost(Preflight(20, forced)))
     installer.ctx.wizard.consents.add("force_unsupported")
     seen: dict[str, Any] = {}
@@ -1445,7 +1444,7 @@ def test_the_profile_changes_are_bootstrap_s(repo: Paths) -> None:
     # preflight gate stop on (preflight's profile_tool.differences): the same lines.
     base = preflight("ubuntu2404-baremetal-no-gpu").profile
     other = preflight("ubuntu2404-baremetal-nvidia-driver-loaded").profile
-    unsupported = preflight("ubuntu2404-no-btrfs-no-dmthin").profile
+    unsupported = preflight("ubuntu2404-cgroup-v1").profile
     no_features = {k: v for k, v in base.items() if k != "features"}
     none_provider = {**base, "provider": None}
     extra = {**base, "features": {**base["features"], "new_feature": {"nested": [1, 2]}}}
@@ -1547,3 +1546,15 @@ def test_the_review_shows_values_with_markup_as_they_are(repo: Paths) -> None:
     assert "⚠ the lab's data is replaced by snapshot [/]snap" in seen["banners"]
     assert "model [/]example/model" in seen["estimates"]
     assert installer.current == "review"
+
+
+def test_the_pool_line_names_its_parts() -> None:
+    from pinka_installer.tui.screens_capacity import pool_text  # noqa: PLC0415
+
+    pool = preflight(FITS).profile["requirements"]["pool"]
+    line = pool_text("LVM thin", pool)
+    assert line.startswith(f"Incus pool: LVM thin, {pool['required_gib']} GiB required (")
+    for part in ("bench", "build", "personal", "images", "metadata", "lvm", "headroom"):
+        assert f"{part} " in line, part
+    assert "image volumes of 3 GiB" in line
+    assert pool_text("LVM thin", {}) == "Incus pool: LVM thin (from preflight)"

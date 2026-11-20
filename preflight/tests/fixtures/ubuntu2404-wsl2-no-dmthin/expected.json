@@ -1,0 +1,11 @@
+{
+  "needs_action": [
+    "lvm_thin_pool"
+  ],
+  "needs_action_contains": [
+    "wsl --update"
+  ],
+  "outcome": "needs_action",
+  "provider": "wsl2",
+  "storage_backend": null
+}

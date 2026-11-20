@@ -81,6 +81,9 @@ def run_set_facts(path: Path, variables: dict[str, Any]) -> dict[str, Any]:
     tasks = loader.load_from_file(str(path), trusted_as_template=True)
     facts = dict(variables)
     for task in tasks:
+        if "ansible.builtin.include_tasks" in task:
+            facts = run_set_facts(path.parent / task["ansible.builtin.include_tasks"], facts)
+            continue
         if "ansible.builtin.set_fact" not in task:
             continue
         templar = Templar(loader=loader, variables=facts)
@@ -137,6 +140,9 @@ def test_researchers_and_networks(desired: dict[str, Any]) -> None:
     assert "incusbr0" not in names
 
 
+THIN = {"lvm.use_thinpool": "true", "lvm.thinpool_metadata_size": "1GiB", "volume.size": "3GiB"}
+
+
 def test_server_and_pool(desired: dict[str, Any]) -> None:
     # On pinka's own Incus (the fixture's: preflight found none) no image of
     # the default project updates itself; the server's interval is left alone.
@@ -146,8 +152,9 @@ def test_server_and_pool(desired: dict[str, Any]) -> None:
     assert desired["incus_pool"] == {
         "name": "pinka-targets",
         "description": "pinka instances",
-        "driver": "btrfs",
-        "config": {"size": "66GiB"},  # incus_pool_size: auto, computed by preflight
+        "driver": "lvm",
+        # incus_pool_size and incus_pool_volume_size: auto, computed by preflight.
+        "config": {"size": "181GiB", **THIN},
     }
 
 
@@ -292,27 +299,47 @@ def test_the_settings_of_pinkas_own_incus_are_recorded() -> None:
         assert template_value(changed, variables) == expected
 
 
-def test_explicit_pool_size_wins() -> None:
-    variables = incus_vars(researchers=[], incus_pool_size="300GiB")
+def test_explicit_sizes_win() -> None:
+    variables = incus_vars(researchers=[], incus_pool_size="300GiB", incus_pool_volume_size="5GiB")
     facts = run_set_facts(ROLES / "incus" / "tasks" / "desired.yml", variables)
-    assert facts["incus_pool"]["config"] == {"size": "300GiB"}
+    assert facts["incus_pool"]["config"] == {"size": "300GiB", **THIN, "volume.size": "5GiB"}
 
 
-@pytest.mark.parametrize(
-    ("backend", "source", "driver", "config"),
-    [
-        ("lvm", "loop", "lvm", {"size": "66GiB", "lvm.use_thinpool": "true"}),
-        ("btrfs", "device", "btrfs", {"source": "/dev/disk/by-id/example-disk"}),
-    ],
-)
-def test_pool_variants(backend: str, source: str, driver: str, config: dict[str, str]) -> None:
+def test_a_device_pool() -> None:
     variables = incus_vars(
-        researchers=[], incus_pool_source=source, incus_pool_device="/dev/disk/by-id/example-disk"
+        researchers=[],
+        incus_pool_source="device",
+        incus_pool_device="/dev/disk/by-id/example-disk",
     )
-    variables["host_profile"] = {**variables["host_profile"], "storage_backend": backend}
     facts = run_set_facts(ROLES / "incus" / "tasks" / "desired.yml", variables)
-    assert facts["incus_pool"]["driver"] == driver
-    assert facts["incus_pool"]["config"] == config
+    assert facts["incus_pool"]["driver"] == "lvm"
+    assert facts["incus_pool"]["config"] == {"source": "/dev/disk/by-id/example-disk", **THIN}
+
+
+def test_lvm_thin_only() -> None:
+    # The play refuses any other backend before an Incus object is described.
+    tasks = yaml.safe_load((ROLES / "incus" / "tasks" / "desired.yml").read_text())
+    check = next(t for t in tasks if t["name"] == "Check that the host has LVM thin provisioning")
+    assert "host_profile.storage_backend == 'lvm'" in check["ansible.builtin.assert"]["that"]
+
+
+def test_the_metadata_size_is_what_preflight_counts() -> None:
+    defaults = yaml.safe_load((ROLES / "incus" / "defaults" / "main.yml").read_text())
+    requirements = yaml.safe_load((INFRA / "preflight" / "requirements.yml").read_text())
+    assert defaults["incus_pool_metadata_size"] == f"{requirements['pool']['metadata_gib']}GiB"
+
+
+def test_volume_size_is_kept_on_an_existing_pool_and_the_loop_file_preallocated() -> None:
+    tasks = yaml.safe_load((ROLES / "incus" / "tasks" / "objects.yml").read_text())
+    create = next(t for t in tasks if t["name"].startswith("Create the storage pool"))
+    assert create["pinka_incus_object"]["update"] is False  # created once, never rewritten
+    keep = next(t for t in tasks if t["name"].startswith("Set the image volume size"))
+    assert keep["pinka_incus_object"]["config"] == {
+        "volume.size": "{{ incus_pool_volume_size_value }}"
+    }
+    assert "update" not in keep["pinka_incus_object"]  # updated on every run
+    allocate = next(t for t in tasks if t["name"] == "Preallocate the loop pool's file")
+    assert allocate["ansible.builtin.command"]["argv"][:2] == ["fallocate", "--length"]
 
 
 def test_projects(desired: dict[str, Any]) -> None:
@@ -329,7 +356,14 @@ def test_projects(desired: dict[str, Any]) -> None:
     # Two concurrent targets (the default), each a VM (vm_targets) of 2 GiB
     # with a probe client of 512 MiB.
     assert bench["limits.memory"] == f"{2 * (2048 + 512)}MiB"
-    assert by_name(projects, "build")["config"]["restricted.networks.access"] == "pinka-build0"
+    # Their root disks with each VM target's 500 MiB state volume.
+    assert bench["limits.disk"] == f"{2 * (16384 + 500 + 4096) * 2**20}B"  # exact bytes
+    assert bench["restricted.snapshots"] == "block"
+    build = by_name(projects, "build")["config"]
+    assert build["restricted.networks.access"] == "pinka-build0"
+    # Two build instances, each with a VM's 500 MiB state volume.
+    assert build["limits.disk"] == f"{2 * (16384 + 500) * 2**20}B"
+    assert build["restricted.snapshots"] == "block"
     user = by_name(projects, "user-1001")["config"]
     assert set(user) >= INCUS_USER_KEYS
     assert user["restricted.devices.gpu"] == "block"
@@ -337,6 +371,55 @@ def test_projects(desired: dict[str, Any]) -> None:
     assert user["restricted.devices.disk.paths"] == "/home/researcher1"
     assert user["restricted.networks.access"] == "incusbr-1001"
     assert user["limits.memory"] == "8GiB"
+    assert user["limits.disk"] == "20GiB"
+
+
+BUDGET_UNITS = {"MiB": 2**20, "GiB": 2**30, "GB": 10**9, "MB": 10**6, "B": 1}
+
+
+@pytest.mark.parametrize("vm_targets", [True, False])
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {},
+        # decimal units, as Incus reads them: exact bytes, never rounded up
+        {
+            "incus_build_limits": {"limits.disk": "50GB"},
+            "incus_bench_limits": {"limits.disk": "40000000001B"},
+            "incus_pool_volume_size": "3500MB",
+        },
+    ],
+)
+def test_the_platforms_disk_budget_is_the_rendered_configuration(
+    vm_targets: bool, overrides: dict[str, Any]
+) -> None:
+    # endpoints.toml's [incus] disk budget (the platform role includes
+    # budget.yml) equals the projects' limits.disk and the pool's volume.size.
+    from pinka_platform import render  # noqa: PLC0415
+
+    facts = run_set_facts(
+        ROLES / "incus" / "tasks" / "desired.yml",
+        incus_vars(vm_targets=vm_targets, researchers=[], **overrides),
+    )
+    projects = {p["name"]: p["config"] for p in facts["incus_projects"]}
+
+    def size(text: str) -> int:
+        number = text.rstrip("BKMGTi")
+        return int(number) * BUDGET_UNITS.get(text[len(number) :], 1)
+
+    budget = {k: int(v) for k, v in facts["incus_disk_budget"].items()}
+    assert set(budget) == set(render.INCUS_DISK)
+    assert budget == {
+        "bench_limits_disk": size(projects["bench"]["limits.disk"]),
+        "build_limits_disk": size(projects["build"]["limits.disk"]),
+        "pool_volume_size": size(facts["incus_pool"]["config"]["volume.size"]),
+    }
+    tasks = yaml.safe_load((ROLES / "platform" / "tasks" / "main.yml").read_text())
+    block = next(t for t in tasks if "block" in t)["block"]
+    include = next(t for t in block if "ansible.builtin.include_role" in t)
+    assert include["ansible.builtin.include_role"] == {"name": "incus", "tasks_from": "budget"}
+    names = [t["name"] for t in block]
+    assert names.index(include["name"]) < names.index("Fetch, stage and validate the release")
 
 
 def test_profiles(desired: dict[str, Any]) -> None:
@@ -357,6 +440,9 @@ def test_profiles(desired: dict[str, Any]) -> None:
             assert profile["config"]["security.guestapi"] == "false"  # contracts.md#incus
             assert "eth0" not in profile["devices"]  # the platform adds the run network NIC
     assert by_name(profiles, "build")["devices"]["eth0"]["network"] == "pinka-build0"
+    vm_root = by_name(profiles, "target-vm")["devices"]["root"]
+    assert (vm_root["size"], vm_root["size.state"]) == ("16GiB", "500MiB")
+    assert by_name(profiles, "default", "user-1001")["devices"]["root"]["size"] == "4GiB"
     assert by_name(profiles, "default", "user-1002")["devices"]["eth0"]["network"] == "incusbr-1002"
 
 
@@ -553,3 +639,247 @@ def test_docker_facts_come_from_docker_info(
     assert evaluate(inner(facts["pinka_docker_gpu_method"]), scope) == method
     assert evaluate(inner(facts["pinka_docker_gpu_args"]), scope) == args
     assert evaluate(inner(facts["pinka_docker_data_root"]), scope) == root
+
+
+OVERRIDES = {
+    "defaults": {},
+    # another key only: the sizes keep their defaults (merged key by key)
+    "another key": {
+        "incus_target_vm": {"memory": "4GiB"},
+        "incus_target_container": {"cpu": "2"},
+        "incus_user_limits": {"limits.cpu": "8"},
+    },
+    "sizes": {
+        "incus_target_vm": {"root_size": "20GiB", "size_state": "1GiB"},
+        "incus_target_container": {"root_size": "10GiB"},
+        "incus_probe_client": {"root_size": "6GiB"},
+        "incus_build_instance": {"size_state": "2GiB"},
+        "incus_user_limits": {"limits.disk": "30GiB"},
+    },
+    "explicit limits": {
+        "incus_bench_limits": {"limits.disk": "100GiB"},
+        "incus_build_limits": {"limits.disk": "50GiB"},
+    },
+    # sizes that are not whole MiB: exact bytes on both sides, never rounded up
+    "decimal sizes": {
+        "incus_target_vm": {"root_size": "3500MB", "size_state": "100000001B"},
+        "incus_target_container": {"root_size": "3500MB"},
+        "incus_probe_client": {"root_size": "1000000001B"},
+        "incus_build_instance": {"root_size": "7000MB", "size_state": "300000001B"},
+    },
+}
+
+
+@pytest.mark.parametrize("vm_targets", [True, False])
+@pytest.mark.parametrize("case", sorted(OVERRIDES))
+def test_the_limits_are_the_parts_preflight_counts(vm_targets: bool, case: str) -> None:
+    # The Incus pool holds what the projects' limits allow: the plan writer
+    # and the role merge the same host_vars key by key with the defaults, so
+    # preflight's parts equal the rendered limits.disk.
+    from pinka_installer import plan as plan_mod  # noqa: PLC0415
+    from pinka_preflight import requirements  # noqa: PLC0415
+
+    host_vars = OVERRIDES[case]
+    data = requirements.load_requirements()
+    plan = plan_mod.plan(data["defaults"], {**host_vars, "researchers": [{"name": "r"}]}, {})
+    _, parts, _ = requirements.pool_parts(data, plan, {"vm_targets": vm_targets})
+    sizes = {p["id"]: p["size_gib"] for p in parts}
+    facts = run_set_facts(
+        ROLES / "incus" / "tasks" / "desired.yml",
+        incus_vars(vm_targets=vm_targets, researchers=[{"name": "researcher1"}], **host_vars),
+    )
+    projects = {p["name"]: p["config"] for p in facts["incus_projects"]}
+
+    def size(text: str) -> int:
+        number = text.rstrip("BKMGTi")
+        return int(number) * BUDGET_UNITS.get(text[len(number) :], 1)
+
+    # exact, to the byte: the rendered limits are what preflight's sum counts
+    for name in ("bench", "build"):
+        assert size(projects[name]["limits.disk"]) == round(sizes[name] * 2**30), name
+    assert size(projects["user-1001"]["limits.disk"]) == round(sizes["personal"] * 2**30)
+    if case == "another key":
+        # the other keys are taken, the sizes are the defaults'
+        assert facts["incus_target_vm"]["memory"] == "4GiB"
+        assert facts["incus_target_vm"]["root_size"] == "16GiB"
+        assert projects["user-1001"]["limits.cpu"] == "8"
+        assert projects["user-1001"]["limits.disk"] == "20GiB"
+
+
+@pytest.mark.parametrize("value", [None, "", "  "])
+@pytest.mark.parametrize("name", ["incus_user_limits", "incus_bench_limits", "incus_build_limits"])
+def test_a_null_or_empty_limits_disk_is_refused(name: str, value: str | None) -> None:
+    from pinka_installer import plan as plan_mod  # noqa: PLC0415
+    from pinka_preflight import requirements  # noqa: PLC0415
+
+    data = requirements.load_requirements()
+    with pytest.raises(plan_mod.PlanError, match=f"{name}: limits.disk is null or empty"):
+        plan_mod.plan(data["defaults"], {name: {"limits.disk": value}}, {})
+    tasks = yaml.safe_load((ROLES / "incus" / "tasks" / "budget.yml").read_text())
+    refuse = next(t for t in tasks if t["name"] == "Refuse a limits.disk set to null or empty")
+    that = refuse["ansible.builtin.assert"]["that"]
+    scope = {"item": {"key": name, "value": {"limits.disk": value}}}
+    assert not all(evaluate(f"({c})", scope) for c in that)
+    scope = {"item": {"key": name, "value": {"limits.disk": "20GiB"}}}
+    assert all(evaluate(f"({c})", scope) for c in that)
+
+
+@pytest.mark.parametrize(
+    ("stat", "runs"),
+    [
+        (f"{100 * 2**30} 2048 512", True),  # 1 MiB allocated of a 100 GiB file: sparse
+        (f"{100 * 2**30} {100 * 2**21} 512", False),  # fully allocated
+        (f"{120 * 2**30} {100 * 2**21} 512", True),  # grown since (incus storage set ... size=)
+    ],
+)
+def test_the_loop_file_is_preallocated_when_sparse(stat: str, runs: bool) -> None:
+    tasks = yaml.safe_load((ROLES / "incus" / "tasks" / "objects.yml").read_text())
+    allocate = next(t for t in tasks if t["name"] == "Preallocate the loop pool's file")
+    scope = {
+        **incus_vars(researchers=[]),
+        "incus_pool_source": "loop",
+        "incus_pool_file_stat": {"rc": 0, "stdout": stat},
+    }
+    assert all(evaluate(f"({c})", scope) for c in allocate["when"]) is runs
+    size = evaluate(allocate["vars"]["incus_pool_file_size"].strip()[2:-2], scope)
+    assert int(size) == int(stat.split(maxsplit=1)[0])
+
+
+@pytest.mark.parametrize(
+    ("source", "mode", "runs"),
+    [
+        ("loop", "  passdown\n", True),  # LVM's default on a new thin pool
+        ("loop", "  nopassdown\n", False),  # already set: no change on a second run
+        ("loop", "", True),  # check mode on a new pool: nothing to read yet
+        ("device", "  passdown\n", False),  # a device-backed pool keeps LVM's default
+    ],
+)
+def test_a_loop_pool_passes_no_discards_down(source: str, mode: str, runs: bool) -> None:
+    tasks = yaml.safe_load((ROLES / "incus" / "tasks" / "objects.yml").read_text())
+    read = next(
+        t for t in tasks if t["name"] == "Read the discards mode of the loop pool's thin pool"
+    )
+    assert read["ansible.builtin.command"]["argv"][:4] == ["lvs", "--noheadings", "-o", "discards"]
+    assert read["check_mode"] is False
+    change = next(t for t in tasks if t["name"] == "Pass no discards down to the loop file")
+    assert change["ansible.builtin.command"]["argv"] == [
+        "lvchange",
+        "--discards",
+        "nopassdown",
+        "{{ incus_pool_thinpool }}",
+    ]
+    scope = {
+        **incus_vars(researchers=[]),
+        "incus_pool_source": source,
+        "incus_pool_discards": {"rc": 0, "stdout": mode},
+    }
+    assert all(evaluate(f"({c})", scope) for c in change["when"]) is runs
+    names = [t["name"] for t in tasks]
+    assert names.index(read["name"]) > names.index("Create the storage pool {{ incus_pool_name }}")
+
+
+DISKS = "/var/lib/incus/disks"
+NOCOW_BLOCK = "Give a new loop pool's file No_COW on btrfs"
+
+
+def objects_task(name: str) -> dict[str, Any]:
+    """A task of objects.yml by its name, inside a block or not."""
+    for entry in yaml.safe_load((ROLES / "incus" / "tasks" / "objects.yml").read_text()):
+        if entry["name"] == name:
+            return dict(entry)
+        for inner in entry.get("block") or []:
+            if inner["name"] == name:
+                return {**inner, "outer": entry}
+    raise AssertionError(name)
+
+
+def holds(entry: dict[str, Any], scope: dict[str, Any]) -> bool:
+    when = entry.get("when", [])
+    conditions = [when] if isinstance(when, str) else list(when)
+    return all(evaluate(f"({c})", scope) for c in conditions)
+
+
+def nocow_scope(file_exists: bool, dir_exists: bool, fs: str, attrs: str) -> dict[str, Any]:
+    block = objects_task(NOCOW_BLOCK)
+    scope: dict[str, Any] = {
+        **incus_vars(researchers=[]),
+        "incus_pool_source": "loop",
+        "incus_pool_paths": {
+            "results": [{"stat": {"exists": file_exists}}, {"stat": {"exists": dir_exists}}]
+        },
+        "incus_pool_dir_fs": {"stdout": f"{fs}\n"},
+        "incus_pool_dir_attr": {"stdout": f"{attrs} {DISKS}\n"},
+    }
+    for key, value in block["vars"].items():
+        scope[key] = template_value(value, scope)
+    return scope
+
+
+@pytest.mark.parametrize(
+    ("file_exists", "dir_exists", "fs", "attrs", "runs"),
+    [
+        (False, True, "btrfs", "----------------------", True),  # an existing directory
+        (False, False, "btrfs", "", True),  # the role creates the directory
+        (False, True, "btrfs", "---------------C------", False),  # No_COW already: no change
+        (False, True, "ext2/ext3", "----------------------", False),  # not btrfs: left alone
+        (False, True, "xfs", "----------------------", False),
+        (True, True, "btrfs", "----------------------", False),  # the file exists: preflight's
+    ],
+)
+def test_a_new_loop_file_on_btrfs_gets_no_cow_from_its_directory(
+    file_exists: bool, dir_exists: bool, fs: str, attrs: str, runs: bool
+) -> None:
+    scope = nocow_scope(file_exists, dir_exists, fs, attrs)
+    block = objects_task(NOCOW_BLOCK)
+    chattr = objects_task("Set No_COW on the loop pool's directory")
+    assert chattr["ansible.builtin.command"]["argv"][:2] == ["chattr", "+C"]
+    sets = holds(block, scope) and holds(chattr, scope)
+    assert sets is runs
+    record = objects_task("Record the loop pool's directory or its No_COW before")
+    create = objects_task("Create the loop pool's directory")
+    if sets:
+        # recorded before it changes: the path it creates, or the attribute's value before
+        assert holds(record, scope)
+        added = template_value(record["pinka_install_record"]["added"], scope)
+        if dir_exists:
+            assert added == {"changed": {f"nocow:{DISKS}": "off"}}
+            assert not holds(create, scope)
+        else:
+            assert added == {"paths": [DISKS]}
+            assert holds(create, scope)
+            assert create["ansible.builtin.file"]["mode"] == "0700"  # as Incus creates it
+    names = [t["name"] for t in block["block"]]
+    assert names.index(record["name"]) < names.index(create["name"]) < names.index(chattr["name"])
+    tasks = [
+        t["name"] for t in yaml.safe_load((ROLES / "incus" / "tasks" / "objects.yml").read_text())
+    ]
+    assert tasks.index(NOCOW_BLOCK) < tasks.index("Create the storage pool {{ incus_pool_name }}")
+    assert tasks.index("Create the storage pool {{ incus_pool_name }}") < tasks.index(
+        "Preallocate the loop pool's file"
+    )
+
+
+@pytest.mark.parametrize(
+    ("configured", "current", "refused"),
+    [("150GiB", "181GiB", True), ("181GiB", "181GiB", False), ("200GiB", "181GiB", False)],
+)
+def test_an_explicit_size_below_the_pools_is_refused(
+    configured: str, current: str, refused: bool
+) -> None:
+    refuse = objects_task("Refuse to lower the loop pool's size")
+    scope = {
+        **incus_vars(researchers=[]),
+        "incus_pool_source": "loop",
+        "incus_pool_size": configured,
+        "incus_pool_loop_size": configured,
+        "incus_pool_size_now": {"rc": 0, "stdout": f"{current}\n"},
+    }
+    assert holds(refuse, scope)
+    passes = all(evaluate(f"({c})", scope) for c in refuse["ansible.builtin.assert"]["that"])
+    assert passes is not refused
+    message = " ".join(refuse["ansible.builtin.assert"]["fail_msg"].split())
+    assert "Incus refuses a smaller size" in message
+    # auto never refuses (the role never changes an existing pool's size)
+    assert not holds(refuse, {**scope, "incus_pool_size": "auto"})
+    create = objects_task("Create the storage pool {{ incus_pool_name }}")
+    assert create["pinka_incus_object"]["update"] is False

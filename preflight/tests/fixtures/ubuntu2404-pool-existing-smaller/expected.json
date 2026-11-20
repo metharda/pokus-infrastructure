@@ -1,0 +1,12 @@
+{
+  "needs_action": [
+    "incus_pool_size"
+  ],
+  "needs_action_contains": [
+    "The existing Incus pool's thin pool (97.0 GiB of data) is smaller than",
+    "missing 81.0 GiB",
+    "incus storage set pinka-targets size=181GiB', larger than its current size",
+    "or lower the limits"
+  ],
+  "outcome": "needs_action"
+}

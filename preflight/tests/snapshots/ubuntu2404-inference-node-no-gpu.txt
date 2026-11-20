@@ -16,10 +16,10 @@ GPU
   none
   - no NVIDIA GPU on the PCI bus
 Capabilities
-  cgroup2 yes, tun yes, KVM usable yes, btrfs yes, dm_thin_pool yes, Secure Boot disabled
-  MAC apparmor (enabled), firewall backend nftables, storage btrfs
+  cgroup2 yes, tun yes, KVM usable yes, dm_thin_pool yes, Secure Boot disabled
+  MAC apparmor (enabled), firewall backend nftables, storage -
 Features
-  gpu_inference off, gpu_training off, vm_targets on, btrfs_pool on, lvm_thin_pool on, dcgm_metrics off
+  gpu_inference off, gpu_training off, vm_targets on, dcgm_metrics off
 Access
   dedicated host, firewall manager none, install session: the console
 Requirements

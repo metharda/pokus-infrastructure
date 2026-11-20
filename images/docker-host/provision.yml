@@ -7,6 +7,21 @@
   hosts: all
   gather_facts: false
   tasks:
+    # Docker's storage driver is overlay2, set before Docker first starts, so
+    # it never picks a driver that keeps its layers outside the target's root
+    # disk accounting (ADR-0017).
+    - name: Create Docker's configuration directory
+      ansible.builtin.file:
+        path: /etc/docker
+        state: directory
+        mode: "0755"
+
+    - name: Set Docker's storage driver
+      ansible.builtin.copy:
+        src: files/daemon.json
+        dest: /etc/docker/daemon.json
+        mode: "0644"
+
     - name: Install the packages
       ansible.builtin.apt:
         name: "{{ image.packages }}"

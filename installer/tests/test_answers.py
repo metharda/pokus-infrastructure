@@ -284,7 +284,7 @@ def _preflight_on(root: Path, plan_file: Path, free_gib: float, out: Path) -> tu
 def test_the_loop_reserve_holds_whoever_writes_host_vars(
     repo: Paths, tmp_path: Path, writer: str
 ) -> None:
-    """Preflight keeps 50 GiB free beside a 30 GiB loop file, whoever wrote host_vars.
+    """Preflight keeps 50 GiB free beside a 200 GiB loop file, whoever wrote host_vars.
 
     The TUI and an answers file write host_vars with ``hostvars.render`` (the
     CI answers file here); bootstrap writes the plan from host_vars with the
@@ -295,15 +295,18 @@ def test_the_loop_reserve_holds_whoever_writes_host_vars(
         (INFRA / "preflight" / "requirements.json").read_bytes()
     )
     if writer == "by hand":
-        text = "incus_pool_source: loop\nincus_pool_size: 30GiB\nvllm_default_deployment: null\n"
+        text = "incus_pool_source: loop\nincus_pool_size: 200GiB\nvllm_default_deployment: null\n"
     else:
         ci = Answers.from_dict(YAML(typ="safe").load(CI.read_text(encoding="utf-8")))
-        assert (ci.storage.source, ci.storage.loop_size_gib) == ("loop", 30)
+        assert (ci.storage.source, ci.storage.loop_size_gib) == ("loop", "auto")
+        ci.storage.loop_size_gib = 200
         example = repo.example_host_vars.read_text(encoding="utf-8")
         text = hostvars.render(ci, None, example)
     repo.host_vars("lab9").write_text(text, encoding="utf-8")
     found = plan_mod.machine_plan(repo, "lab9")
-    assert found["pool"] == {"source": "loop", "size_gib": 30.0}
+    # incus_pool_device's default is empty, as for every loop file
+    expected = {"source": "loop", "size_gib": 200.0, "volume_size_gib": None, "device": ""}
+    assert found["pool"] == expected
     plan_file = tmp_path / "plan.json"
     plan_file.write_text(json.dumps(found), encoding="utf-8")
     root = tmp_path / "root"
@@ -318,8 +321,8 @@ def test_the_loop_reserve_holds_whoever_writes_host_vars(
     assert code == 20
     assert below["outcome"] == "unsupported"
     assert any(
-        "the free space kept beside the Incus pool (loop file): 50.0 GiB, missing 0.1 GiB on /"
-        in reason
+        # The file is the largest item, so the shortfall falls on it.
+        "the Incus pool (loop file): 200.0 GiB, missing 0.1 GiB on /" in reason
         for reason in below["unsupported_reasons"]
     ), below["unsupported_reasons"]
     code, above = _preflight_on(root, plan_file, need + 0.01, tmp_path / "above.json")

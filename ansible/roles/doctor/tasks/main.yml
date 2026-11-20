@@ -212,6 +212,9 @@
         cache: "{{ doctor_fingerprint_dir }}/current.json"
         versions_lock_sha256: "{{ doctor_config_files.results[0].stat.checksum | default(none) }}"
         host_vars_sha256: "{{ doctor_config_files.results[1].stat.checksum | default(none) }}"
+      doctor:
+        report: "{{ doctor_periodic_report }}"
+        periodic_interval_minutes: "{{ doctor_periodic_interval_minutes | int }}"
       disk:
         history: /var/lib/pinka/doctor/disk-history.json
         warn_free_percent: "{{ doctor_disk_warn_free_percent | int }}"
@@ -346,3 +349,48 @@
         memory_gib: "{{ (expected | default({})).memory_gib | default(none) }}"
         cpus: "{{ (expected | default({})).cpu_threads | default(none) }}"
         kvm_expected: "{{ pinka_features.vm_targets | default(false) | bool }}"
+
+# Doctor's periodic run. The role runs it once when its units changed (a
+# first install, an interval change) or its report is missing, so bootstrap's
+# doctor stage always finds a report. A failed run does not stop the play:
+# the doctor stage runs doctor itself and reports its outcome.
+- name: Create doctor's state directory
+  ansible.builtin.file:
+    path: "{{ doctor_periodic_report | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Install doctor's periodic service and timer
+  ansible.builtin.template:
+    src: "pinka-doctor.{{ item }}.j2"
+    dest: "/etc/systemd/system/pinka-doctor.{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: [service, timer]
+  register: doctor_periodic_units
+
+- name: Enable doctor's periodic timer
+  ansible.builtin.systemd_service:
+    name: pinka-doctor.timer
+    enabled: true
+    state: started
+    daemon_reload: "{{ doctor_periodic_units is changed }}"
+  when: not ansible_check_mode
+
+- name: Read doctor's periodic report
+  ansible.builtin.stat:
+    path: "{{ doctor_periodic_report }}"
+  register: doctor_periodic_report_stat
+
+- name: Run doctor's periodic checks once
+  ansible.builtin.systemd_service:
+    name: pinka-doctor.service
+    state: started
+  changed_when: true
+  failed_when: false
+  when:
+    - not ansible_check_mode
+    - doctor_periodic_units is changed or not doctor_periodic_report_stat.stat.exists

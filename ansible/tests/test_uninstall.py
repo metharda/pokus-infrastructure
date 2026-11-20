@@ -19,7 +19,7 @@ from typing import Any
 import pinka_install_record
 import pinka_uninstall as mod
 import pytest
-from test_uninstall_module import DEBIAN, FakeHost, full_install, params
+from test_uninstall_module import DEBIAN, FakeHost, full_install, make_host, params
 
 from ansible_testlib import ANSIBLE, FAMILIES, GROUP_VARS, INFRA, ROLES, load_yaml, template_value
 from pinka_preflight.detect import conflicts as preflight_conflicts
@@ -745,3 +745,35 @@ def test_the_component_packages_come_from_the_source_matrix() -> None:
     assert sorted(repos) == sorted(mod.COMPONENTS)
     assert "zabbly-incus-lts" in repos["incus"]
     assert {"docker-deb", "docker-rpm-fedora"} <= set(repos["docker"])
+
+
+def test_the_periodic_doctor_run_is_removed() -> None:
+    # Like every unit and path pinka creates: the units by NAMES' unit prefix in
+    # its unit directory, the report's directory below its state directory.
+    tasks = load_yaml(ROLES / "doctor" / "tasks" / "main.yml")
+    units = next(t for t in tasks if t["name"] == "Install doctor's periodic service and timer")
+    for kind in units["loop"]:
+        dest = units["ansible.builtin.template"]["dest"].replace("{{ item }}", kind)
+        assert dest.startswith(NAMES["unit_dir"] + "/" + NAMES["unit_prefix"]), dest
+    report = load_yaml(ROLES / "doctor" / "vars" / "main.yml")["doctor_periodic_report"]
+    assert report.startswith(NAMES["state_dir"] + "/")
+
+
+def test_uninstall_plans_the_periodic_doctor_run(tmp_path: Path) -> None:
+    # What the doctor role installs, on a host: uninstall plans its timer before its
+    # service (each stopped and disabled when applied) and the state directory
+    # holding the report.
+    fake = FakeHost(tmp_path)
+    full_install(fake)
+    vars_ = load_yaml(ROLES / "doctor" / "vars" / "main.yml")
+    for unit in ("pinka-doctor.timer", "pinka-doctor.service"):
+        fake.file(f"{NAMES['unit_dir']}/{unit}", "[Unit]\n")
+    fake.file(vars_["doctor_periodic_report"], "{}\n", 0o600)
+    ctx = mod.Context(make_host(fake), params(fake))
+    items = mod.build_plan(ctx)["items"]
+    units = [i["name"] for i in items if i["kind"] == "unit"]
+    assert units.index("pinka-doctor.timer") < units.index("pinka-doctor.service")
+    state = next(i for i in items if i["kind"] == "state_dir")
+    assert state["name"] == NAMES["state_dir"]
+    assert state["action"] == "remove"
+    assert vars_["doctor_periodic_report"].startswith(NAMES["state_dir"] + "/")

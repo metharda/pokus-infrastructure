@@ -135,6 +135,7 @@ nav:
       - Capacity planning: explanation/capacity-planning.md
       - Portability: explanation/portability.md
       - How benchmark targets are isolated: explanation/target-isolation.md
+      - How doctor counts the Incus pool: explanation/incus-pool-accounting.md
       - How telemetry, metrics and logs flow: explanation/telemetry.md
       - How golden images are built: explanation/golden-images.md
       - How the lab comes up: explanation/lab-session.md
@@ -168,3 +169,4 @@ nav:
       - "ADR-0014: Platforms plug in through manifests and fixed privilege profiles": adr/0014-platforms-through-manifests.md
       - "ADR-0015: GPU training as infra-run container jobs": adr/0015-gpu-training-container-jobs.md
       - "ADR-0016: Telemetry reached only through the query proxy and the agent socket": adr/0016-telemetry-query-isolation.md
+      - "ADR-0017: LVM thin only for the Incus pool, sized to hold every limit": adr/0017-lvm-thin-only-for-the-incus-pool.md

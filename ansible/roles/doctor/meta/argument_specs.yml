@@ -48,10 +48,13 @@ argument_specs:
         type: float
         default: 1.0
         description: Largest clock offset doctor accepts, in seconds.
-      doctor_min_pool_free_gib:
+      doctor_periodic_interval_minutes:
         type: int
-        default: 20
-        description: Free space of the Incus pool below which doctor warns, in GiB.
+        default: 60
+        choices: [5, 10, 15, 20, 30, 60, 120, 180, 240, 360, 480, 720, 1440]
+        description: >-
+          Minutes between doctor's periodic runs (pinka-doctor.timer); doctor.periodic warns when
+          the last run is older than twice it.
       doctor_disk_warn_free_percent:
         type: int
         default: 15

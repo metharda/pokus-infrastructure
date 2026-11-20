@@ -31,12 +31,20 @@ PORTS = {
     "docs_serve": 18706,
     "inference_control": 18710,
 }
+# The default lab's disk budget: two VM targets with their probe clients, two
+# build instances, 3 GiB image volumes.
+DISK = {
+    "bench_limits_disk": 2 * (16384 + 500 + 4096) * 2**20,
+    "build_limits_disk": 2 * (16384 + 500) * 2**20,
+    "pool_volume_size": 3 * 2**30,
+}
 FACTS = render.LabFacts(
     machine_name="pinka-lab",
     lab_mode="production",
     node_role="full",
     ports=PORTS,
     cpuset_targets="8-15",
+    incus_disk=DISK,
 )
 
 
@@ -84,8 +92,18 @@ def test_files_follow_the_published_schemas(fixture: str) -> None:
     jsonschema.validate(principals, schema("principals"))
     for facts in (
         FACTS,
-        render.LabFacts("pinka-lab", "production", "lab", PORTS, inference_mode="remote"),
-        render.LabFacts("pinka-qa", "staging", "full", PORTS, "scripted", "http://127.0.0.1:9/v1"),
+        render.LabFacts(
+            "pinka-lab", "production", "lab", PORTS, inference_mode="remote", incus_disk=DISK
+        ),
+        render.LabFacts(
+            "pinka-qa",
+            "staging",
+            "full",
+            PORTS,
+            "scripted",
+            "http://127.0.0.1:9/v1",
+            incus_disk=DISK,
+        ),
     ):
         endpoints = tomllib.loads(render.endpoints_toml(render.endpoints(data, facts)))
         jsonschema.validate(endpoints, schema("endpoints"))
@@ -104,7 +122,10 @@ def test_schemas_match_the_rendering() -> None:
     data = manifest("allprof")
     local = render.endpoints(data, FACTS)
     remote = render.endpoints(
-        data, render.LabFacts("pinka-lab", "production", "lab", PORTS, inference_mode="remote")
+        data,
+        render.LabFacts(
+            "pinka-lab", "production", "lab", PORTS, inference_mode="remote", incus_disk=DISK
+        ),
     )
     assert set(local) == set(remote) == set(endpoints)
     for table, value in local.items():
@@ -177,7 +198,7 @@ def test_endpoints_carry_only_the_required_facilities() -> None:
 
 def test_endpoints_follow_port_overrides() -> None:
     ports = dict(PORTS, otlp_grpc=14317, opa=18181, vllm=28704)
-    facts = render.LabFacts("pinka-lab", "production", "full", ports)
+    facts = render.LabFacts("pinka-lab", "production", "full", ports, incus_disk=DISK)
     document = render.endpoints(manifest("allprof"), facts)
     assert document["telemetry"]["otlp_grpc"] == "127.0.0.1:14317"
     assert document["telemetry"]["vm_collector_grpc"] == "198.18.0.1:14317"
@@ -190,7 +211,9 @@ def test_endpoints_follow_port_overrides() -> None:
 
 
 def test_remote_inference_goes_through_the_local_forwarder() -> None:
-    facts = render.LabFacts("pinka-lab", "production", "lab", PORTS, inference_mode="remote")
+    facts = render.LabFacts(
+        "pinka-lab", "production", "lab", PORTS, inference_mode="remote", incus_disk=DISK
+    )
     inference = render.endpoints(manifest("allprof"), facts)["inference"]
     assert inference == {
         "mode": "remote",
@@ -202,14 +225,19 @@ def test_remote_inference_goes_through_the_local_forwarder() -> None:
 
 def test_scripted_inference_only_on_staging() -> None:
     url = "http://127.0.0.1:9999/v1"
-    staging = render.LabFacts("pinka-qa", "staging", "full", PORTS, "scripted", url)
+    staging = render.LabFacts(
+        "pinka-qa", "staging", "full", PORTS, "scripted", url, incus_disk=DISK
+    )
     assert render.endpoints(manifest("allprof"), staging)["inference"]["api_url"] == url
-    production = render.LabFacts("pinka-lab", "production", "full", PORTS, "scripted", url)
+    production = render.LabFacts(
+        "pinka-lab", "production", "full", PORTS, "scripted", url, incus_disk=DISK
+    )
     with pytest.raises(ValueError, match="staging"):
         render.endpoints(manifest("allprof"), production)
     with pytest.raises(ValueError, match="unknown"):
         render.endpoints(
-            manifest("allprof"), render.LabFacts("x", "staging", "full", PORTS, "other")
+            manifest("allprof"),
+            render.LabFacts("x", "staging", "full", PORTS, "other", incus_disk=DISK),
         )
 
 

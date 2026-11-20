@@ -727,8 +727,8 @@ Logical package names, mapped per family in vars/&lt;family&gt;.yml.
 - Default:
 
     ```yaml
-    [ca_certificates, curl, gpg, jq, git, acl, btrfs_tools, lvm2, thin_provisioning_tools, nftables,
-      rsync, tmux, htop, iotop, sysstat, sudo, xz, zstd, bzip2, tar, python_debian]
+    [ca_certificates, curl, gpg, jq, git, acl, lvm2, thin_provisioning_tools, nftables, rsync,
+      tmux, htop, iotop, sysstat, sudo, xz, zstd, bzip2, tar, python_debian]
     ```
 
 ### `base_journald_system_max_use`
@@ -1091,12 +1091,13 @@ Largest clock offset doctor accepts, in seconds.
 - Type: `float`
 - Default: `1.0`
 
-### `doctor_min_pool_free_gib`
+### `doctor_periodic_interval_minutes`
 
-Free space of the Incus pool below which doctor warns, in GiB.
+Minutes between doctor's periodic runs (pinka-doctor.timer); doctor.periodic warns when the last run is older than twice it.
 
 - Type: `int`
-- Default: `20`
+- Choices: `5`, `10`, `15`, `20`, `30`, `60`, `120`, `180`, `240`, `360`, `480`, `720`, `1440`
+- Default: `60`
 
 ### `doctor_disk_warn_free_percent`
 
@@ -1472,10 +1473,24 @@ A loop file in the root filesystem, or a dedicated device.
 
 ### `incus_pool_size`
 
-Size of a loop pool, such as 300GiB, or auto: the size preflight computed from the golden images, the concurrent targets' root disks and the free space (host profile requirements.pool). An existing pool keeps its size.
+Size of a loop pool, such as 300GiB, or auto: the sum preflight computed of everything that may be written to the pool (host profile requirements.pool); an explicit size must hold it. An existing pool keeps its size; one smaller than the sum needs an operator action.
 
 - Type: `str`
 - Default: `auto`
+
+### `incus_pool_volume_size`
+
+The pool's volume.size, the size of every image volume, such as 4GiB, or auto: just above the largest unpacked image (host profile requirements.pool). Set on new and existing pools; Incus refuses an image larger than it.
+
+- Type: `str`
+- Default: `auto`
+
+### `incus_pool_metadata_size`
+
+The thin pool's metadata volume, set when the pool is created.
+
+- Type: `str`
+- Default: `1GiB`
 
 ### `incus_pool_device`
 
@@ -1550,7 +1565,14 @@ Targets that run at once; they size the bench project's memory and the memory pr
 
 ### `incus_bench_limits`
 
-Project limits of bench (memory from the concurrent targets, CPUs from cpuset_targets or the host's CPUs).
+Overrides of bench's project limits, merged key by key with incus_bench_limits_defaults; a limits.disk set to null or empty is refused.
+
+- Type: `dict`
+- Default: `{}`
+
+### `incus_bench_limits_defaults`
+
+Project limits of bench (memory and disk from the concurrent targets, CPUs from cpuset_targets or the host's CPUs).
 
 - Type: `dict`
 - Default:
@@ -1560,10 +1582,40 @@ Project limits of bench (memory from the concurrent targets, CPUs from cpuset_ta
         \ | default(false) else incus_target_container).memory\n       | pinka_size_mib)\n   \
         \   + (incus_probe_client.memory | pinka_size_mib)) }}MiB", limits.cpu: "{{ (cpuset_targets\
         \ | pinka_cpuset_cpus | length) if cpuset_targets\n   else [(host_profile.hardware.cpu_threads_effective\
-        \ | int) - 2, 1] | max }}", limits.instances: '40'}
+        \ | int) - 2, 1] | max }}", limits.instances: '40', limits.disk: "{{ (incus_concurrent_targets\
+        \ | int)\n   * (((incus_target_vm.root_size | pinka_size_bytes) + (incus_target_vm.size_state\
+        \ | pinka_size_bytes)\n       if pinka_features.vm_targets | default(false)\n       else\
+        \ (incus_target_container.root_size | pinka_size_bytes))\n      + (incus_probe_client.root_size\
+        \ | pinka_size_bytes)) }}B"}
+    ```
+
+### `incus_build_limits`
+
+Overrides of build's project limits, merged key by key with incus_build_limits_defaults; a limits.disk set to null or empty is refused.
+
+- Type: `dict`
+- Default: `{}`
+
+### `incus_build_limits_defaults`
+
+Project limits of build (disk for two build instances with their state volumes).
+
+- Type: `dict`
+- Default:
+
+    ```yaml
+    {limits.disk: "{{ 2 * ((incus_build_instance.root_size | pinka_size_bytes)\n        + (incus_build_instance.size_state\
+        \ | pinka_size_bytes)) }}B"}
     ```
 
 ### `incus_target_container`
+
+Overrides of the target-container profile's sizes, merged key by key with incus_target_container_defaults.
+
+- Type: `dict`
+- Default: `{}`
+
+### `incus_target_container_defaults`
 
 Default limits and root disk of the target-container profile.
 
@@ -1572,12 +1624,26 @@ Default limits and root disk of the target-container profile.
 
 ### `incus_target_vm`
 
-Default limits and root disk of the target-vm profile.
+Overrides of the target-vm profile's sizes, merged key by key with incus_target_vm_defaults.
 
 - Type: `dict`
-- Default: `{cpu: '2', memory: 2GiB, root_size: 16GiB}`
+- Default: `{}`
+
+### `incus_target_vm_defaults`
+
+Default limits, root disk and state volume of the target-vm profile.
+
+- Type: `dict`
+- Default: `{cpu: '2', memory: 2GiB, root_size: 16GiB, size_state: 500MiB}`
 
 ### `incus_probe_client`
+
+Overrides of the probe-client profile's sizes, merged key by key with incus_probe_client_defaults.
+
+- Type: `dict`
+- Default: `{}`
+
+### `incus_probe_client_defaults`
 
 Limits and root disk of the probe-client profile.
 
@@ -1586,28 +1652,49 @@ Limits and root disk of the probe-client profile.
 
 ### `incus_build_instance`
 
-Limits and root disk of the build profile.
+Overrides of the build profile's sizes, merged key by key with incus_build_instance_defaults.
 
 - Type: `dict`
-- Default: `{cpu: '2', memory: 2GiB, root_size: 16GiB}`
+- Default: `{}`
+
+### `incus_build_instance_defaults`
+
+Limits, root disk and state volume (for a VM build) of the build profile.
+
+- Type: `dict`
+- Default: `{cpu: '2', memory: 2GiB, root_size: 16GiB, size_state: 500MiB}`
 
 ### `incus_user_limits`
 
-Project limits of each personal project.
+Overrides of each personal project's limits, merged key by key with incus_user_limits_defaults; a limits.disk set to null or empty is refused.
+
+- Type: `dict`
+- Default: `{}`
+
+### `incus_user_limits_defaults`
+
+Project limits of each personal project; limits.disk counts in full, once per researcher, in the Incus pool's size.
 
 - Type: `dict`
 - Default:
 
     ```yaml
-    {limits.instances: '5', limits.cpu: '4', limits.memory: 8GiB, limits.disk: 60GiB}
+    {limits.instances: '5', limits.cpu: '4', limits.memory: 8GiB, limits.disk: 20GiB}
     ```
 
 ### `incus_user_instance`
 
+Overrides of personal instances' defaults, merged key by key with incus_user_instance_defaults.
+
+- Type: `dict`
+- Default: `{}`
+
+### `incus_user_instance_defaults`
+
 Default limits and root disk of instances in personal projects.
 
 - Type: `dict`
-- Default: `{cpu: '1', memory: 1GiB, root_size: 10GiB}`
+- Default: `{cpu: '1', memory: 1GiB, root_size: 4GiB}`
 
 ### `incus_cert_dir`
 

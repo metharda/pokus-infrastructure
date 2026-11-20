@@ -7,6 +7,7 @@ ausearch
 autogroup
 automount
 baremetal
+bcachefs
 binfmt
 browsable
 btrfs
@@ -58,6 +59,9 @@ linuxcontainers
 lockcheck
 lockfiles
 logprobs
+lvchange
+lvextend
+lvmthin
 lxcfs
 micromamba
 miniplat
@@ -70,12 +74,16 @@ mttr
 netfilter
 nftables
 nistp
+nocow
 nologin
+nopassdown
 nvcr
 oneshot
 orcids
 osinfo
+overcommitted
 pacman
+passdown
 peercred
 pgdg
 pgdump
@@ -83,6 +91,7 @@ pgpass
 pids
 pinka
 pokus
+poolmetadatasize
 postrm
 potka
 prefs
@@ -91,6 +100,8 @@ preseed
 procps
 qwen
 recompiles
+reflinked
+reflinks
 refplat
 rego
 repodata
@@ -106,10 +117,12 @@ SLES
 smol
 SNTP
 splittable
+subvolume
 sysfs
 sysstat
 tailnet
 tailscaled
+timeshift
 timesyncd
 tmpfiles
 tmpfs
@@ -120,6 +133,7 @@ uutils
 versionlock
 veth
 VFIO
+vgextend
 vllm
 worktrees
 wslconfig

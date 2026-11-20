@@ -9,6 +9,9 @@ defaults) says what the operator chose. This module adds them up:
 - the disk known at install, per mount point, item by item (a shortfall is
   listed with what is missing where), with the free space a loop pool's file
   leaves beside it as an item of its own;
+- the Incus pool: the sum of everything that may be written to it
+  (``pool_parts``), which ``incus_pool_size: auto`` is and an explicit size
+  must hold;
 - the expected growth of what grows with use, which is never a reason to
   refuse.
 
@@ -31,7 +34,7 @@ from typing import Any
 from pinka_preflight import schema_check, vram
 from pinka_preflight.detect.hardware import DiskInfo, disk_info
 from pinka_preflight.fs import FileSystem
-from pinka_preflight.runner import Runner
+from pinka_preflight.runner import EXIT_NOT_FOUND, Runner
 
 PREFLIGHT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REQUIREMENTS_JSON = os.path.join(PREFLIGHT_DIR, "requirements.json")
@@ -296,6 +299,9 @@ class Requirements:
             ``computed`` or ``configured``, ``detail``); empty on an inference node.
         unsupported: Why the plan does not fit (memory below the floor or the
             required value, a disk shortfall, ``inference: on`` that cannot serve).
+        needs_action: Operator actions before anything changes (an Incus pool
+            smaller than the sum of everything that may be written to it), as
+            ``{"id", "action"}``.
         degraded: Why it fits only with consent (memory below the recommended
             value, ``inference: auto`` that cannot serve).
         vram_serving: The serving line (None on a lab node).
@@ -319,6 +325,7 @@ class Requirements:
     growth: Growth | None = None
     pool: dict[str, Any] = field(default_factory=dict)
     unsupported: list[str] = field(default_factory=list)
+    needs_action: list[dict[str, str]] = field(default_factory=list)
     degraded: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
@@ -1079,6 +1086,9 @@ def _disk_items(
                 "the free space kept beside the Incus pool (loop file)",
                 pool_file,
                 size=float(data["pool"]["loop_reserve_gib"]),
+                # A new pool needs it free; beside an existing file it needs no
+                # space here, and _existing_loop_space applies doctor's two
+                # levels to the free space instead.
                 present=fs.exists(pool_file),
                 basis="estimated",
                 source="loop_reserve_gib of preflight/requirements.yml pool",
@@ -1109,24 +1119,454 @@ def _disk_items(
     return out
 
 
-def _measure(fs: FileSystem, runner: Runner, path: str, measured: dict[str, DiskInfo]) -> DiskInfo:
-    """``disk_info`` once per path."""
-    if path not in measured:
-        measured[path] = disk_info(fs, runner, path)
-    return measured[path]
+def volume_size_gib(data: Mapping[str, Any], plan: Mapping[str, Any]) -> float:
+    """The pool's ``volume.size``: configured, or just above the largest unpacked image.
+
+    Args:
+        data: Compiled requirements.
+        plan: The plan.
+
+    Returns:
+        ``incus_pool_volume_size`` when set; otherwise the largest blueprint of
+        ``images/`` (built or not), its estimate times the image unpack factor
+        rounded up to whole GiB, plus the volume's own filesystem.
+    """
+    configured = plan["pool"].get("volume_size_gib")
+    if configured is not None:
+        return float(configured)
+    factor = float(data["image_unpack_factor"])
+    largest = max(float(b["estimated_size_gib"]) for b in data["blueprints"].values())
+    return float(math.ceil(largest * factor - EPSILON)) + float(data["pool"]["volume_fs_gib"])
 
 
-def _growth_caps(data: Mapping[str, Any], plan: Mapping[str, Any]) -> float:
-    """What the stores below the research space hold at their retention (GiB)."""
-    total = 0.0
-    retention = plan["retention"]
-    for spec in data["growth"]:
-        if plan["node_role"] not in spec["roles"] or not spec.get("retention"):
-            continue
-        cap = float(spec["gib_per_day"]) * float(retention[spec["retention"]])
-        size_cap = float(retention.get(spec.get("size_cap") or "", 0) or 0)
-        total += min(cap, size_cap) if size_cap > 0 else cap
-    return total
+def pool_parts(
+    data: Mapping[str, Any], plan: Mapping[str, Any], features: Mapping[str, bool]
+) -> tuple[float, list[dict[str, Any]], int]:
+    """The parts of the Incus pool's required size (ADR-0017).
+
+    Args:
+        data: Compiled requirements.
+        plan: The plan.
+        features: Feature flags after the switches.
+
+    Returns:
+        ``(volume_size_gib, parts, required_gib)``: each part ``{id, title,
+        basis, size_gib, detail}`` (basis ``configured`` for a limit or a set
+        size, else the estimate's), and their sum rounded up to whole GiB.
+    """
+    spec, roots = data["pool"], data["target_root_gib"]
+    # The profiles' sizes and the projects' limits as the role renders them:
+    # host_vars merged key by key with the defaults (the plan's incus_disk).
+    sizes = plan["incus_disk"]
+    vm = bool(features.get("vm_targets"))
+    count = int(plan["concurrent_targets"])
+    target = float(sizes["target_vm_root_gib" if vm else "target_container_root_gib"])
+    probe = float(sizes["probe_client_root_gib"])
+    state = float(sizes["target_vm_state_gib"]) if vm else 0.0
+    build = float(sizes["build_root_gib"]) + float(sizes["build_state_gib"])
+    researchers = int(plan["researchers"])
+    personal = float(plan["personal_disk_gib"])
+    size = volume_size_gib(data, plan)
+    images = list(plan["images"])
+    volumes = len(images) + (1 if images else 0) + 1
+    vm_images = sum(1 for n in images if data["blueprints"][n]["type"] == "virtual-machine")
+    metadata = float(spec["metadata_gib"])
+    bench_set = sizes.get("bench_limits_disk_gib")
+    build_set = sizes.get("build_limits_disk_gib")
+    bench_detail = f"{count} x ({text_gib(target)} target + {text_gib(probe)} probe client"
+    bench_detail += f" + {text_gib(state)} VM state)" if vm else ")"
+    image_detail = (
+        f"({len(images)} golden image(s)"
+        + (" + the upstream base image" if images else "")
+        + f" + 1 new version) x {text_gib(size)} volume.size"
+    )
+    if vm_images:
+        image_detail += f" + {vm_images} x {text_gib(float(roots['vm_state']))} VM image state"
+    parts: list[dict[str, Any]] = [
+        {
+            "id": "bench",
+            "title": "the bench project's limits.disk",
+            "basis": "configured",
+            "size_gib": bench_set if bench_set is not None else count * (target + probe + state),
+            "detail": "incus_bench_limits limits.disk" if bench_set is not None else bench_detail,
+        },
+        {
+            "id": "build",
+            "title": "the build project's limits.disk",
+            "basis": "configured",
+            "size_gib": build_set if build_set is not None else 2 * build,
+            "detail": (
+                "incus_build_limits limits.disk"
+                if build_set is not None
+                else f"2 x {text_gib(build)} build instance (root disk and VM state)"
+            ),
+        },
+        {
+            "id": "personal",
+            "title": "the personal projects' limits.disk",
+            "basis": "configured",
+            "size_gib": researchers * personal,
+            "detail": f"{researchers} researcher(s) x {text_gib(personal)}",
+        },
+        {
+            "id": "images",
+            "title": "the image volumes",
+            # a set volume.size is the operator's; auto rests on the unpack
+            # factor's and the volume filesystem's estimates
+            "basis": "configured"
+            if plan["pool"].get("volume_size_gib") is not None
+            else str(spec["volume_fs_basis"]),
+            "size_gib": volumes * size + vm_images * float(roots["vm_state"]),
+            "detail": image_detail,
+        },
+        {
+            "id": "metadata",
+            "title": "the thin pool's metadata and its spare",
+            "basis": str(spec["metadata_basis"]),
+            "size_gib": 2 * metadata,
+            "detail": f"2 x {text_gib(metadata)}",
+        },
+        {
+            "id": "lvm",
+            "title": "LVM's own overhead",
+            "basis": str(spec["lvm_overhead_basis"]),
+            "size_gib": float(spec["lvm_overhead_gib"]),
+            "detail": "metadata area and extent rounding",
+        },
+        {
+            "id": "headroom",
+            "title": "the headroom for the images no limit counts",
+            "basis": str(spec["headroom_basis"]),
+            "size_gib": float(spec["headroom_gib"]),
+            "detail": "before doctor's incus.pool.space_low",
+        },
+    ]
+    required = math.ceil(sum(float(p["size_gib"]) for p in parts) - EPSILON)
+    return size, parts, required
+
+
+def _pool_text(parts: list[dict[str, Any]], required: int) -> str:
+    """The sum of the pool's parts, for a message."""
+    terms = " + ".join(f"{p['title']} {text_gib(float(p['size_gib']))}" for p in parts)
+    return f"{terms} = {required} GiB"
+
+
+POOL_ACTION_ID = "incus_pool_size"
+# File systems on which fallocate does not reserve a loop file's space.
+NO_PREALLOCATION = ("zfs",)
+# File systems that copy on write: the loop file needs No_COW (chattr +C),
+# which the incus role sets on its directory before Incus creates the file
+# there, so the file is No_COW from its creation.
+COPY_ON_WRITE = ("btrfs",)
+# The thin pool Incus's LVM driver creates in the pool's volume group.
+THIN_POOL = "IncusThinPool"
+# Doctor's incus.pool.loop_space_full (and space_low): three image volumes.
+SPACE_LOW_IMAGE_VOLUMES = 3
+# The parts of the pool's sum outside the thin pool's data.
+OUTSIDE_DATA = ("metadata", "lvm")
+
+
+def _down(value: float) -> str:
+    """A measured size for a message, rounded down to a tenth (never overstated)."""
+    return f"{math.floor(round(value * 10, 9)) / 10:.1f} GiB"
+
+
+def _loop_file(runner: Runner, path: str) -> tuple[float, float] | None:
+    """An existing loop file's size and allocated space in GiB, or None if unreadable."""
+    done = runner.run(["stat", "--format=%s %b %B", path])
+    fields = done.stdout.split() if done.ok else []
+    if len(fields) != 3 or not all(f.isdigit() for f in fields):  # noqa: PLR2004
+        return None
+    size, blocks, unit = (int(f) for f in fields)
+    return size / GIB, min(size, blocks * unit) / GIB
+
+
+def _no_cow(runner: Runner, path: str) -> bool | None:
+    """Whether a file carries No_COW (lsattr's ``C``), or None if unreadable."""
+    done = runner.run(["lsattr", "-d", path])
+    fields = done.stdout.split() if done.ok else []
+    if not fields:
+        return None
+    return "C" in fields[0]
+
+
+def _thin_pool(runner: Runner, vg: str) -> tuple[str, float | None]:
+    """An existing pool's volume group and its thin pool's data size.
+
+    Returns:
+        ``("absent", None)`` when the volume group does not exist (or LVM is
+        not installed), ``("present", GiB)`` with the thin pool's data size,
+        ``("unreadable", None)`` otherwise.
+    """
+    done = runner.run(["vgs", "--noheadings", "-o", "vg_name", vg])
+    if not done.ok:
+        if done.returncode == EXIT_NOT_FOUND or "not found" in done.stderr.lower():
+            return "absent", None
+        return "unreadable", None
+    lvs = runner.run(
+        ["lvs", "--noheadings", "--units", "b", "--nosuffix", "-o", "lv_size", f"{vg}/{THIN_POOL}"]
+    )
+    text = lvs.stdout.strip() if lvs.ok else ""
+    return ("present", int(text) / GIB) if text.isdigit() else ("unreadable", None)
+
+
+def _device_size(runner: Runner, device: str) -> float | None:
+    """The size of a dedicated pool device in GiB, or None if unreadable."""
+    done = runner.run(["blockdev", "--getsize64", device])
+    text = done.stdout.strip() if done.ok else ""
+    return int(text) / GIB if text.isdigit() else None
+
+
+NEVER_SMALLER = "larger than its current size (Incus refuses a smaller size)"
+LOWER = (
+    "or lower the limits (incus_concurrent_targets, the profiles' root disks, the researchers' "
+    "incus_user_limits limits.disk, incus_pool_volume_size)"
+)
+
+
+def _action(text: str) -> dict[str, str]:
+    """A needs_action entry of the pool, ending with the re-run."""
+    return {"id": POOL_ACTION_ID, "action": f"{text}, then re-run bootstrap."}
+
+
+def _check_thin_pool(
+    state: str,
+    thin: float | None,
+    data_need: float,
+    total: str,
+    *,
+    name: str,
+    file_size: float | None,
+    needs_action: list[dict[str, str]],
+) -> None:
+    """An existing pool's thin pool against the data part of the sum."""
+    if state == "unreadable":
+        needs_action.append(
+            _action(
+                f"The Incus pool's volume group {name} exists but its thin pool {THIN_POOL} "
+                "cannot be measured, so preflight cannot verify that it holds the sum of "
+                f"everything that may be written to it ({total}). Check 'sudo vgs {name}' and "
+                f"'sudo lvs {name}'"
+            )
+        )
+        return
+    if state != "present" or thin is None or thin + EPSILON >= data_need:
+        return
+    missing = round_up(data_need - thin, 1)
+    if file_size is not None:
+        grow = (
+            f"grow it with 'sudo incus storage set {name} size="
+            f"{math.ceil(file_size + data_need - thin - EPSILON)}GiB', " + NEVER_SMALLER
+        )
+    else:
+        grow = (
+            f"add a disk to its volume group ('sudo vgextend {name} <device>') and extend "
+            f"the thin pool into it ('sudo lvextend -l +100%FREE {name}/{THIN_POOL}') until "
+            f"it holds {math.ceil(data_need - EPSILON)} GiB"
+        )
+    needs_action.append(
+        _action(
+            f"The existing Incus pool's thin pool ({_down(thin)} of data) is smaller than "
+            f"the data part of the sum of everything that may be written to it "
+            f"({text_gib(data_need)} of {total}): missing {text_gib(missing)}. Either {grow}, "
+            + LOWER
+        )
+    )
+
+
+def _check_loop_file(
+    found: tuple[float, float] | None,
+    state: str,
+    required: int,
+    total: str,
+    *,
+    path: str,
+    name: str,
+    fstype: str | None,
+    runner: Runner,
+    needs_action: list[dict[str, str]],
+) -> None:
+    """An existing loop file: readable, its volume group present, No_COW on btrfs."""
+    if found is None:
+        needs_action.append(
+            _action(
+                f"The size and allocation of the existing Incus pool's file {path} cannot be "
+                "read, so preflight cannot verify the pool or the space it still needs. "
+                f"Check 'sudo stat {path}'"
+            )
+        )
+    elif state == "absent":
+        # The file is there but its volume group is not: the thin pool cannot be
+        # measured, and the file's size says nothing of a thin pool whose metadata
+        # was extended since.
+        needs_action.append(
+            _action(
+                f"The existing Incus pool's file {path} is there, but its volume group {name} "
+                f"is not ('vgs {name}' finds none: the loop device is not attached, or LVM is "
+                "missing), so preflight cannot measure the pool's thin pool against the sum "
+                f"of everything that may be written to it ({total}). Start Incus (it attaches "
+                f"the file) and check 'sudo vgs {name}' and 'sudo incus storage info {name}'"
+            )
+        )
+    if fstype not in COPY_ON_WRITE:
+        return
+    no_cow = _no_cow(runner, path)
+    if no_cow is True:
+        return
+    needs_action.append(
+        _action(
+            f"The existing Incus pool's file {path} is on {fstype} "
+            + ("without" if no_cow is False else "with an unreadable")
+            + " No_COW attribute ('lsattr' shows no C), so writes to it can take new "
+            "space on the file system. No_COW cannot be set on a file that holds data. "
+            "Export the instances and custom volumes you need (incus export, incus storage "
+            "volume export) and delete them, remove the root disk on this pool from the "
+            "profiles that use it (incus profile device remove <profile> root --project "
+            f"<project>), then delete the pool (incus storage delete {name}: Incus deletes its "
+            "file), and re-run bootstrap, which creates the pool with a No_COW file and the "
+            "profiles' root disks again; or put the pool on a dedicated device "
+            "(incus_pool_source: device)"
+        )
+    )
+
+
+def _check_new_pool(
+    pool: Mapping[str, Any],
+    required: int,
+    total: str,
+    *,
+    runner: Runner,
+    needs_action: list[dict[str, str]],
+) -> None:
+    """The pool the plan will create: a dedicated device, or an explicit loop size."""
+    if pool["source"] == "device":
+        device = str(pool.get("device") or "")
+        found = _device_size(runner, device) if device else None
+        if found is None:
+            named = device or "(incus_pool_device is not set)"
+            needs_action.append(
+                _action(
+                    f"The size of the Incus pool's device {named} cannot be read, so preflight "
+                    "cannot verify that it holds the sum of everything that may be written to "
+                    f"it ({total}). Set incus_pool_device to the device's /dev/disk/by-id/ path "
+                    "and check 'sudo blockdev --getsize64 <device>'"
+                )
+            )
+        elif found + EPSILON < required:
+            needs_action.append(
+                _action(
+                    f"The Incus pool's device ({_down(found)}) is smaller than the sum of "
+                    f"everything that may be written to it ({total}): missing "
+                    f"{text_gib(round_up(required - found, 1))}. Either use a device of at "
+                    f"least {required} GiB, " + LOWER
+                )
+            )
+    elif pool["size_gib"] is not None and float(pool["size_gib"]) + EPSILON < required:
+        size = float(pool["size_gib"])
+        needs_action.append(
+            _action(
+                f"The Incus pool's incus_pool_size ({text_gib(size)}) is smaller than the sum "
+                f"of everything that may be written to it ({total}): missing "
+                f"{text_gib(round_up(required - size, 1))}. Either set incus_pool_size to "
+                f"auto or at least {required}GiB, " + LOWER
+            )
+        )
+
+
+def _pool_checks(
+    plan: Mapping[str, Any],
+    parts: list[dict[str, Any]],
+    required: int,
+    *,
+    path: str,
+    name: str,
+    fstype: str | None,
+    fs: FileSystem,
+    runner: Runner,
+    needs_action: list[dict[str, str]],
+) -> float:
+    """Check an existing pool, or the pool the plan will create, against the sum.
+
+    The existing pool is measured whatever the plan's source: its thin pool's
+    data size against the sum less the parts outside the data (metadata and
+    LVM's overhead), so growing the volume group and the thin pool (vgextend,
+    lvextend) or the loop file (incus storage set) clears it. A pool that
+    cannot be measured is an operator action too.
+
+    Returns:
+        The part of an existing loop file still to allocate, in GiB (it needs
+        that much on the file's mount point).
+    """
+    total = _pool_text(parts, required)
+    data_need = sum(float(p["size_gib"]) for p in parts if p["id"] not in OUTSIDE_DATA)
+    state, thin = _thin_pool(runner, name)
+    exists = fs.exists(path)
+    found = _loop_file(runner, path) if exists else None
+    _check_thin_pool(
+        state,
+        thin,
+        data_need,
+        total,
+        name=name,
+        file_size=found[0] if found else None,
+        needs_action=needs_action,
+    )
+    if exists:
+        _check_loop_file(
+            found,
+            state,
+            required,
+            total,
+            path=path,
+            name=name,
+            fstype=fstype,
+            runner=runner,
+            needs_action=needs_action,
+        )
+    elif state == "absent":
+        _check_new_pool(plan["pool"], required, total, runner=runner, needs_action=needs_action)
+    _check_source(plan["pool"], state, found, path=path, name=name, needs_action=needs_action)
+    return max(0.0, found[0] - found[1]) if found else 0.0
+
+
+def _check_source(
+    pool: Mapping[str, Any],
+    state: str,
+    found: tuple[float, float] | None,
+    *,
+    path: str,
+    name: str,
+    needs_action: list[dict[str, str]],
+) -> None:
+    """The plan against the existing pool: the same source, and no smaller explicit size."""
+    if found is not None and pool["source"] == "device":
+        needs_action.append(
+            _action(
+                f"The existing Incus pool {name} is a loop file ({path}), but "
+                "incus_pool_source is device: pinka never re-creates a pool. Set "
+                "incus_pool_source: loop, or move the instances off the pool and delete it "
+                "before bootstrap creates it on the device"
+            )
+        )
+    elif found is None and state == "present" and pool["source"] == "loop":
+        needs_action.append(
+            _action(
+                f"The existing Incus pool {name} is on a dedicated device (its volume group "
+                f"has no loop file at {path}), but incus_pool_source is loop: pinka never "
+                "re-creates a pool. Set incus_pool_source: device and incus_pool_device"
+            )
+        )
+    elif found is not None and pool["size_gib"] is not None:
+        size = float(pool["size_gib"])
+        if size + EPSILON < found[0]:
+            needs_action.append(
+                _action(
+                    f"incus_pool_size ({text_gib(size)}) is below the existing Incus pool's "
+                    f"size ({_down(found[0])}): pinka never lowers a pool's size, and Incus "
+                    "refuses a smaller size. Set incus_pool_size to auto or to at least "
+                    f"{math.ceil(found[0] - EPSILON)}GiB"
+                )
+            )
 
 
 def _pool(
@@ -1137,88 +1577,98 @@ def _pool(
     features: Mapping[str, bool],
     fs: FileSystem,
     runner: Runner,
-    measured: dict[str, DiskInfo],
-    warnings: list[str],
+    unsupported: list[str],
+    needs_action: list[dict[str, str]],
 ) -> dict[str, Any]:
-    """The pool's size, and for incus_pool_size: auto its loop file item.
+    """The Incus pool: its required size, its size, and its loop file's items.
 
-    The computed size: the golden images and the concurrent targets' root
-    disks (or the build instance's, when larger) with the margin, rounded up
-    to whole GiB, limited by the free space on the loop file's mount point
-    minus pinka's other needs there (the free space the file leaves beside it
-    among them), never below the floor. The item is appended to ``entries``.
+    The required size is the sum of everything that may be written to the pool
+    (``pool_parts``). ``incus_pool_size: auto`` is exactly that sum, never cut
+    down: a mount point without room for it is a disk shortfall like any other.
+    A pool smaller than the sum (an explicit size, a dedicated device, an
+    existing pool of either kind, measured whatever the plan's source), or one
+    that cannot be measured, is an operator action with the exact numbers and
+    the remedies, before anything changes; pinka never resizes a pool. A loop
+    file on a file system that cannot preallocate it is refused, one whose
+    file system cannot be read and an existing one on btrfs without No_COW
+    are operator actions. What an existing sparse loop file still needs on its
+    mount point, and the auto pool's item, are appended to ``entries``.
     """
     pool = plan["pool"]
-    if pool["source"] == "device":
-        return {"source": "device", "size_gib": None, "basis": "configured", "detail": ""}
+    size_vol, parts, required = pool_parts(data, plan, features)
+    common = {
+        "required_gib": required,
+        "volume_size_gib": gib(size_vol),
+        # rounded up, never down: doctor sums them against the thin pool
+        "parts": [{**p, "size_gib": round_up(float(p["size_gib"]), 2)} for p in parts],
+    }
+    total = _pool_text(parts, required)
+    path = str(data["disk"]["pool_file"])
+    name = os.path.splitext(os.path.basename(path))[0]
+    loop = pool["source"] == "loop"
+    fstype: str | None = None
+    if loop or fs.exists(path):
+        fstype = disk_info(fs, runner, path).fstype
+    if loop and fstype is None:
+        needs_action.append(
+            _action(
+                f"The file system type of the Incus pool's loop file location {path} cannot be "
+                "read ('df --output=fstype'), so preflight cannot tell whether the file can be "
+                "preallocated or needs No_COW. Check that its directory's file system is "
+                "mounted and readable, or put the pool on a dedicated device "
+                "(incus_pool_source: device)"
+            )
+        )
+    if loop and fstype in NO_PREALLOCATION:
+        unsupported.append(
+            f"pool: the loop file {path} would be on {fstype}, which cannot preallocate "
+            "it: put the Incus pool on a dedicated device (incus_pool_source: device)"
+        )
+    to_allocate = _pool_checks(
+        plan,
+        parts,
+        required,
+        path=path,
+        name=name,
+        fstype=fstype,
+        fs=fs,
+        runner=runner,
+        needs_action=needs_action,
+    )
+    if not loop:
+        return {
+            "source": "device",
+            "size_gib": None,
+            "basis": "configured",
+            "detail": f"a dedicated device; it must hold {total}",
+            **common,
+        }
+    if to_allocate > 0:
+        entries.append(
+            (
+                DiskItem(
+                    "pool-allocate",
+                    "the part of the Incus pool's existing file still to allocate",
+                    path,
+                    "",
+                    to_allocate,
+                    False,
+                    0.0,
+                    "measured",
+                    "the file's size less its allocated blocks (stat); bootstrap preallocates it",
+                ),
+                path,
+            )
+        )
     if pool["size_gib"] is not None:
         size = float(pool["size_gib"])
         return {
             "source": "loop",
             "size_gib": gib(size),
             "basis": "configured",
-            "detail": f"incus_pool_size {text_gib(size)}",
+            "detail": f"incus_pool_size {text_gib(size)}; the sum: {total}",
+            **common,
         }
-    spec, roots = data["pool"], data["target_root_gib"]
-    path = str(data["disk"]["pool_file"])
-    images = sum(float(data["blueprints"][n]["estimated_size_gib"]) for n in plan["images"])
-    target = float(roots["vm" if features.get("vm_targets") else "container"])
-    count = int(plan["concurrent_targets"])
-    running = count * (target + float(roots["probe_client"]))
-    build = float(roots["build"]) if plan["images"] else 0.0
-    base = images + max(running, build)
-    wanted = math.ceil(base * (1 + float(spec["margin"])) - EPSILON)
-    floor = int(spec["floor_gib"])
-    disks = (
-        f"{count} x ({text_gib(target)} target + "
-        f"{text_gib(float(roots['probe_client']))} probe client) root disks"
-    )
-    if build > running:
-        disks = f"the {text_gib(build)} build instance's root disk (larger than {disks})"
-    elif build:
-        disks += f" (the {text_gib(build)} build instance is not larger)"
-    detail = (
-        f"golden images {text_gib(images)} + {disks} + {float(spec['margin']):.0%} = {wanted} GiB"
-    )
-    info = _measure(fs, runner, path, measured)
-    mount = info.mount or info.checked_path
-    if fs.exists(path):
-        size = float(wanted)
-        detail = "the existing pool keeps its size (Incus pools are never rewritten)"
-    elif info.free_bytes is None:
-        size = float(max(floor, wanted))
-        warnings.append(f"disk: the free space of {mount} could not be measured for the pool")
-    else:
-        there = [
-            item
-            for item, item_path in entries
-            if not item.present
-            and (_measure(fs, runner, item_path, measured).mount or item_path) == mount
-        ]
-        others = sum(item.size_gib for item in there)
-        reserve = sum(item.size_gib for item in there if item.id == RESERVE_ID)
-        srv = _measure(fs, runner, str(plan["srv_path"]), measured)
-        growth = _growth_caps(data, plan) if (srv.mount or srv.checked_path) == mount else 0.0
-        available = info.free_bytes / GIB - others - growth
-        size = float(max(floor, min(wanted, math.floor(available + EPSILON))))
-        needs = [f"{text_gib(others - reserve)} at install"]
-        if reserve:
-            needs.append(f"{text_gib(reserve)} kept beside the file")
-        if growth:
-            needs.append(f"{text_gib(growth)} the stores hold at their retention")
-        if available >= 0:
-            detail += (
-                f"; {available:.1f} GiB free on {mount} after pinka's other needs there "
-                f"({', '.join(needs)})"
-            )
-        else:
-            detail += (
-                f"; pinka's other needs on {mount} ({', '.join(needs)}) exceed its free space "
-                f"by {-available:.1f} GiB"
-            )
-        if size < wanted:
-            floored = f" (the floor of {floor} GiB)" if size == floor else ""
-            detail += f", so {size:g} GiB{floored}"
     entries.append(
         (
             DiskItem(
@@ -1226,16 +1676,81 @@ def _pool(
                 "the Incus pool (loop file)",
                 path,
                 "",
-                size,
+                float(required),
                 fs.exists(path),
                 0.0,
                 "estimated",
-                "incus_pool_size: auto, computed (preflight/requirements.yml pool)",
+                "incus_pool_size: auto, the sum of preflight/requirements.yml pool",
             ),
             path,
         )
     )
-    return {"source": "loop", "size_gib": gib(size), "basis": "computed", "detail": detail}
+    return {
+        "source": "loop",
+        "size_gib": float(required),
+        "basis": "computed",
+        "detail": total,
+        **common,
+    }
+
+
+LOOP_SPACE_ID = "incus_pool_loop_space"
+
+
+def _existing_loop_space(
+    data: Mapping[str, Any],
+    plan: Mapping[str, Any],
+    req: Requirements,
+    fs: FileSystem,
+    runner: Runner,
+) -> None:
+    """Doctor's two levels for the free space beside an existing loop pool's file.
+
+    The same condition as doctor's incus.pool.loop_space_low and
+    incus.pool.loop_space_full, with the same answer: the free space the
+    file's file system keeps after the install's other items there, below
+    the reserve, a warning; below three image volumes, an operator action. A
+    new pool needs the reserve free like any other item.
+    """
+    path = str(data["disk"]["pool_file"])
+    if plan["pool"]["source"] != "loop" or not fs.exists(path) or not req.pool:
+        return
+    mount = next((m for m in req.disks if any(i.id == RESERVE_ID for i in m.items)), None)
+    if mount is None:
+        return
+    # Exact, as doctor compares: the measured bytes less the items still to come
+    # (the mount's own figures are rounded for display).
+    info = disk_info(fs, runner, path)
+    if info.free_bytes is None:
+        return  # the free space is not measured: _disks warns
+    free = info.free_bytes / GIB - sum(i.size_gib for i in mount.items if not i.present)
+    reserve = float(data["pool"]["loop_reserve_gib"])
+    level = SPACE_LOW_IMAGE_VOLUMES * float(req.pool["volume_size_gib"])
+    where = f"{mount.mount} ({mount.fstype or 'type unknown'})"
+    if free < level:
+        req.needs_action.append(
+            _action_with_id(
+                LOOP_SPACE_ID,
+                f"The file system that holds the existing Incus pool's loop file, {where}, "
+                f"keeps {_down(max(free, 0.0))} free after the install, below three image "
+                f"volumes ({text_gib(level)}), doctor's incus.pool.loop_space_full: a write "
+                "into the pool that needs new space there may fail. Free space on it (old "
+                "snapshots of its subvolume, logs, files nobody needs), or move the pool to a "
+                "dedicated device (incus_pool_source: device)",
+            )
+        )
+    elif free < reserve:
+        req.warnings.append(
+            f"pool: the file system that holds the existing Incus pool's loop file, {where}, "
+            f"keeps {_down(free)} free after the install, below the {text_gib(reserve)} kept "
+            "beside the file (doctor's incus.pool.loop_space_low): free space on it, or move "
+            "the pool to a dedicated device"
+        )
+
+
+def _action_with_id(action_id: str, text: str) -> dict[str, str]:
+    """A needs_action entry with its own id, ending with the re-run."""
+    return {"id": action_id, "action": f"{text}, then re-run bootstrap."}
 
 
 def _up(value: float) -> float:
@@ -1351,9 +1866,11 @@ def _growth(
     mount = srv_info.mount or srv_info.checked_path
     free_after: float | None = None
     if srv_info.free_gib is not None:
+        # The reserve beside a loop pool stays free: doctor watches it, so the
+        # stores do not count it as room to grow into, beside a new or an
+        # existing file alike.
         used = sum(
-            m.required_gib
-            - sum(i.size_gib for i in m.items if i.id == RESERVE_ID and not i.present)
+            m.required_gib + sum(i.size_gib for i in m.items if i.id == RESERVE_ID and i.present)
             for m in req.disks
             if m.mount == mount
         )
@@ -1551,10 +2068,12 @@ def compute(
             features=features,
             fs=fs,
             runner=runner,
-            measured=measured,
-            warnings=req.warnings,
+            unsupported=req.unsupported,
+            needs_action=req.needs_action,
         )
     measured = _disks(entries, fs, runner, req, measured)
+    if str(plan["node_role"]) in LAB_ROLES:
+        _existing_loop_space(data, plan, req, fs, runner)
     srv = str(plan["srv_path"])
     srv_info = measured.get(f"{srv.rstrip('/')}/models") or disk_info(fs, runner, srv)
     req.growth = _growth(data, plan, req, srv_info)

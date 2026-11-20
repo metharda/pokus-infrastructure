@@ -25,7 +25,7 @@ example a templated value bootstrap cannot read), the play stops with signal 77.
 | Fact | Content |
 | --- | --- |
 | `pinka_host_profile` | the fresh host profile |
-| `pinka_features` | its feature flags (`gpu_inference`, `gpu_training`, `vm_targets`, `btrfs_pool`, `lvm_thin_pool`, `dcgm_metrics`) after the plan's switches: `gpu_inference` only where vLLM serves, `gpu_training` only where training jobs run on the GPU |
+| `pinka_features` | its feature flags (`gpu_inference`, `gpu_training`, `vm_targets`, `dcgm_metrics`) after the plan's switches: `gpu_inference` only where vLLM serves, `gpu_training` only where training jobs run on the GPU |
 | `pinka_training` | where training jobs run: `gpu`, `cpu` (the CPU-only variant, `training: cpu`) or `off` |
 | `pinka_training_caps` | `training_caps` with `memory_max: auto` (or left out) replaced by the cap preflight computed from this host |
 

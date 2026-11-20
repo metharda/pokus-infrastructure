@@ -8,7 +8,6 @@ base_packages:
   - jq
   - git
   - acl
-  - btrfs_tools
   - lvm2
   - thin_provisioning_tools
   - nftables

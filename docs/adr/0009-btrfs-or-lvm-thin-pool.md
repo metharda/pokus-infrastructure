@@ -8,7 +8,9 @@ last_verified: {date: null, rc: null, by: null}
 
 # ADR-0009: btrfs or LVM thin for the Incus pool, never dir
 
-- **Status:** accepted
+- **Status:** superseded by
+  [ADR-0017](0017-lvm-thin-only-for-the-incus-pool.md): the pool is LVM thin
+  only
 - **Date:** 2026-10-05
 - **Deciders:** pokus-infrastructure maintainers
 

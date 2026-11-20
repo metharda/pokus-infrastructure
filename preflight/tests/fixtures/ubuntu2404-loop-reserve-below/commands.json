@@ -3,17 +3,17 @@
     "df --output=target,fstype,size,avail -B1 /": {
       "rc": 0,
       "stderr": "",
-      "stdout": "Mounted on Type 1B-blocks Avail\n/ ext4 1073741824000 101565239132\n"
+      "stdout": "Mounted on Type 1B-blocks Avail\n/ ext4 1073741824000 284101349212\n"
     },
     "df --output=target,fstype,size,avail -B1 /srv": {
       "rc": 0,
       "stderr": "",
-      "stdout": "Mounted on Type 1B-blocks Avail\n/ ext4 1073741824000 101565239132\n"
+      "stdout": "Mounted on Type 1B-blocks Avail\n/ ext4 1073741824000 284101349212\n"
     },
     "df --output=target,fstype,size,avail -B1 /var/lib": {
       "rc": 0,
       "stderr": "",
-      "stdout": "Mounted on Type 1B-blocks Avail\n/ ext4 1073741824000 101565239132\n"
+      "stdout": "Mounted on Type 1B-blocks Avail\n/ ext4 1073741824000 284101349212\n"
     },
     "mokutil --sb-state": {
       "rc": 0,

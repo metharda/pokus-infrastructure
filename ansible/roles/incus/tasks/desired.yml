@@ -2,12 +2,12 @@
 #
 # The desired Incus objects, rendered from incus/projects/*.yaml.j2 and
 # incus/profiles/*.yaml.j2. The preseed and the convergence use the same data.
-- name: Check that the host has quota-capable storage
+- name: Check that the host has LVM thin provisioning
   ansible.builtin.assert:
     that:
-      - host_profile.storage_backend in ['btrfs', 'lvm']
+      - host_profile.storage_backend == 'lvm'
       - incus_pool_source in ['loop', 'device']
-    fail_msg: "Incus needs a btrfs or LVM thin pool (host profile storage_backend) and incus_pool_source loop or device."
+    fail_msg: "Incus needs an LVM thin pool (host profile storage_backend lvm) and incus_pool_source loop or device."
     quiet: true
 
 - name: Read the researchers' accounts
@@ -39,14 +39,17 @@
     label: "{{ item.name }}"
 
 # incus_pool_size: auto takes the size preflight computed for this host
-# (requirements.pool of the host profile bootstrap passes);
-# Incus creates the pool once and never resizes it.
+# (requirements.pool of the host profile bootstrap passes); pinka creates the
+# pool once and never resizes it.
 - name: Decide the loop pool's size
   ansible.builtin.set_fact:
     incus_pool_loop_size: >-
       {{ ((host_profile.requirements.pool.size_gib | int) ~ 'GiB')
          if (incus_pool_size | string) == 'auto' else incus_pool_size }}
   when: incus_pool_source == 'loop'
+
+- name: Decide the image volume size and the platform's disk budget
+  ansible.builtin.include_tasks: budget.yml
 
 # An Incus that is not pinka's (--adopt-incus, at the first install or
 # later) stays the owner's in what pinka does not need, its image auto-update
@@ -77,10 +80,11 @@
     incus_pool:
       name: "{{ incus_pool_name }}"
       description: pinka instances
-      driver: "{{ 'btrfs' if host_profile.storage_backend == 'btrfs' else 'lvm' }}"
+      driver: lvm
       config: >-
         {{ ({'size': incus_pool_loop_size} if incus_pool_source == 'loop' else {'source': incus_pool_device})
-           | combine({'lvm.use_thinpool': 'true'} if host_profile.storage_backend == 'lvm' else {}) }}
+           | combine({'lvm.use_thinpool': 'true', 'lvm.thinpool_metadata_size': incus_pool_metadata_size,
+                      'volume.size': incus_pool_volume_size_value}) }}
     incus_networks:
       - name: "{{ incus_build_network }}"
         type: bridge

@@ -90,7 +90,6 @@ doctor_gpu_image: >-
 doctor_incus:
   pool: "{{ incus_pool_name }}"
   backend: "{{ host_profile.storage_backend }}"
-  min_free_gib: "{{ doctor_min_pool_free_gib }}"
   run_acl: "{{ incus_run_acl }}"
   events_unit: pinka-incus-events.service
   projects: [bench, build]
@@ -122,3 +121,17 @@ doctor_observability:
   wait_seconds: "{{ doctor_telemetry_wait | int }}"
   smoke_wait_seconds: "{{ doctor_smoke_wait | int }}"
   poll_seconds: 5
+
+# Doctor's periodic run (pinka-doctor.timer): the Incus pool's checks on a
+# lab node and the free space per mount point everywhere, its report, and the
+# timer's calendar (the interval divides the hour or the day).
+doctor_periodic_report: /var/lib/pinka/doctor/last.json
+doctor_periodic_checks: >-
+  {{ (['incus.pool', 'incus.pool.undersized', 'incus.pool.space_low', 'incus.pool.overcommitted',
+       'incus.pool.metadata_high', 'incus.pool.metadata_full', 'incus.pool.loop_allocated',
+       'incus.pool.discards', 'incus.pool.buckets', 'incus.pool.loop_space_low',
+       'incus.pool.loop_space_full', 'incus.pool.loop_nocow'] if doctor_runs_lab else [])
+     + ['disk.free_space'] }}
+doctor_periodic_calendar: >-
+  {{ ('*:0/' ~ doctor_periodic_interval_minutes) if (doctor_periodic_interval_minutes | int) < 60
+     else ('0/' ~ ((doctor_periodic_interval_minutes | int) // 60) ~ ':00') }}

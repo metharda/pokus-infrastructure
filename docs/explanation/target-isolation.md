@@ -65,12 +65,24 @@ describes.
 
 ## Resource limits
 
-Project limits cap the sum over all instances in `bench` and in every
-personal project; profiles give each instance default CPU, memory and root
-disk limits that blueprints may raise within the project's limits. All
-instances live in one storage pool, `pinka-targets`, which must be btrfs or
-LVM thin so that disk quotas work; Pokus Infrastructure (pinka) never uses the `dir` backend
-([ADR-0009](../adr/0009-btrfs-or-lvm-thin-pool.md)).
+Project limits cap the sum over all instances in `bench`, `build` and every
+personal project, disk included (`limits.disk`); profiles give each instance
+default CPU, memory and root disk limits that blueprints may raise within the
+project's limits. Snapshots are blocked in `bench` and `build`: no limit
+counts them. All instances live in one LVM thin pool, `pinka-targets`: an
+instance cannot write past its root disk, whatever it creates inside, and the
+sum of the limits Incus enforces never exceeds the thin pool. What Incus does
+not count (images, a backup import, and any other such path) doctor counts
+at its full size, and it fails `incus.pool.overcommitted` once that exists
+([ADR-0017](../adr/0017-lvm-thin-only-for-the-incus-pool.md);
+[How doctor counts the Incus pool](incus-pool-accounting.md)).
+
+In a personal project, importing a backup (`incus import`, or
+`incus storage volume import`) is outside the pool's guarantee: Incus
+restores the backup's snapshots, which no limit counts, and a VM's disk at
+the backup's own size. It may take the pool past what it holds and make
+doctor fail; delete the imported snapshots you do not need, or ask the
+operator first.
 
 ## CPU sets
 

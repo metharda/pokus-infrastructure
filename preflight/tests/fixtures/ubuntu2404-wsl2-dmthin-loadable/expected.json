@@ -1,0 +1,5 @@
+{
+  "needs_action": [],
+  "provider": "wsl2",
+  "storage_backend": "lvm"
+}

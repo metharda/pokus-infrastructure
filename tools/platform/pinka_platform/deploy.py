@@ -1403,6 +1403,7 @@ def lab_facts(lab: Mapping[str, Any]) -> render.LabFacts:
         scripted_api_url=str(lab.get("scripted_api_url", "")),
         vm_collector_address=str(lab.get("vm_collector_address", "198.18.0.1")),
         cpuset_targets=str(lab.get("cpuset_targets", "")),
+        incus_disk={str(k): int(v) for k, v in dict(lab.get("incus_disk") or {}).items()},
     )
 
 

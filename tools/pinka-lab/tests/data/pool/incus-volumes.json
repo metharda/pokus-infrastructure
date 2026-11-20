@@ -1,0 +1,90 @@
+[
+ {
+  "name": "t1",
+  "project": "bench",
+  "type": "container",
+  "content_type": "filesystem",
+  "config": {}
+ },
+ {
+  "name": "vm1",
+  "project": "bench",
+  "type": "virtual-machine",
+  "content_type": "block",
+  "config": {}
+ },
+ {
+  "name": "t3",
+  "project": "bench",
+  "type": "container",
+  "content_type": "filesystem",
+  "config": {}
+ },
+ {
+  "name": "b1",
+  "project": "build",
+  "type": "container",
+  "content_type": "filesystem",
+  "config": {}
+ },
+ {
+  "name": "c1",
+  "project": "user-1001",
+  "type": "container",
+  "content_type": "filesystem",
+  "config": {}
+ },
+ {
+  "name": "c2",
+  "project": "user-1001",
+  "type": "container",
+  "content_type": "filesystem",
+  "config": {}
+ },
+ {
+  "name": "fp1",
+  "project": "default",
+  "type": "image",
+  "content_type": "filesystem",
+  "config": {}
+ },
+ {
+  "name": "fp2",
+  "project": "default",
+  "type": "image",
+  "content_type": "filesystem",
+  "config": {}
+ },
+ {
+  "name": "fp3",
+  "project": "default",
+  "type": "image",
+  "content_type": "filesystem",
+  "config": {}
+ },
+ {
+  "name": "vmimg",
+  "project": "default",
+  "type": "image",
+  "content_type": "block",
+  "config": {}
+ },
+ {
+  "name": "data",
+  "project": "default",
+  "type": "custom",
+  "content_type": "filesystem",
+  "config": {
+   "size": "10GiB"
+  }
+ },
+ {
+  "name": "scratch",
+  "project": "extra",
+  "type": "custom",
+  "content_type": "filesystem",
+  "config": {
+   "size": "5GiB"
+  }
+ }
+]

@@ -32,7 +32,7 @@ from producing results that look valid but are not.
 | Operating system | `os-release` fields, architecture, kernel release, whether PID 1 is systemd |
 | Environment class | `baremetal`, `wsl2`, `wsl1`, `vm`, `container` or `unknown`, with a confidence and every signal used |
 | Hardware | CPU threads (also under cgroup CPU limits), memory, free disk space for `/var/lib` and the research space |
-| Kernel capabilities | cgroup v2 and its controllers, `overlay`, `br_netfilter`, `nf_tables`, `veth`, `/dev/net/tun`, KVM and nested virtualization, btrfs and LVM thin provisioning, Secure Boot, the MAC system |
+| Kernel capabilities | cgroup v2 and its controllers, `overlay`, `br_netfilter`, `nf_tables`, `veth`, `/dev/net/tun`, KVM and nested virtualization, LVM thin provisioning (`dm_thin_pool`), Secure Boot, the MAC system |
 | GPU | NVIDIA GPU, driver state, VRAM and compute capability, and whether the open kernel module of the pinned driver supports its PCI device ID (a driver is installed automatically only then); on WSL2 through the Windows driver |
 | Conflicts | Docker Desktop integration, snap Docker, image-based or non-systemd systems, musl, a busy package manager, a Linux NVIDIA driver inside WSL, an unmanaged Incus |
 | Pre-existing components | Docker Engine, Tailscale, LXD, Podman, Incus and the NVIDIA driver, each with its version and origin (`pinka` or `pre-existing`, from the install record); what pinka would need changed in one of them is `needs_action` ([Components that existed before pinka](pre-existing-components.md)) |
@@ -59,8 +59,8 @@ low confidence is a warning that the operator sees before continuing.
 flowchart TD
     D[Detection results] --> F[Facts]
     F --> M{Support matrix}
-    M -->|OS, architecture or environment unsupported,<br>core requirement failed,<br>blocking conflict, no quota-capable storage| U[unsupported, exit 20]
-    M -->|operator action needed| N[needs_action, exit 30]
+    M -->|OS, architecture or environment unsupported,<br>core requirement failed,<br>blocking conflict| U[unsupported, exit 20]
+    M -->|operator action needed,<br>no LVM thin provisioning| N[needs_action, exit 30]
     M -->|optional feature missing| G[degraded, exit 10]
     M -->|everything available| S[supported, exit 0]
 ```
@@ -77,17 +77,22 @@ then `degraded`, then `supported`. One exception connects the first two: a
 failed core requirement that an operator can fix is reported as
 `needs_action`. The typical case is WSL2 without systemd: PID 1 is not
 systemd only because `/etc/wsl.conf` does not enable it, so the fix is to
-enable it and restart WSL, not to give up on the host.
+enable it and restart WSL, not to give up on the host. A missing
+`dm_thin_pool` is another: preflight names the package or the change that
+provides the module, for the host's family and environment.
 
 **Tiers** are reported separately from the outcome. `supported` and `tested`
 continue without extra consent; `experimental` needs `--accept-experimental`
 or confirmation; rolling-release distributions add a reproducibility warning
 because their installed versions drift between sessions.
 
-**Storage** must support quotas. The Incus pool uses btrfs, or LVM thin
-provisioning as a fallback. Without either the host is unsupported, because a
-plain directory backend cannot stop a disk-exhaustion scenario from filling
-the host disk.
+**Storage** is LVM thin only
+([ADR-0017](../adr/0017-lvm-thin-only-for-the-incus-pool.md)): an instance
+cannot write past its root disk, whatever it creates inside. A plain
+directory backend cannot enforce disk limits, and btrfs quotas are escaped by
+a subvolume created inside an instance, so neither is used. The pool is sized
+to hold every project's disk limit, the image volumes and a headroom
+([Capacity planning](capacity-planning.md)).
 
 ## Why preflight uses only the standard library
 

@@ -118,6 +118,16 @@ add it to your PowerShell profile.
   check can pass while that drive is nearly full. Preflight never queries
   Windows: check the Windows drive's free space yourself, before the install
   and as the lab grows.
+- **Keep the Incus pool's size free on the Windows drive.** The pool is a
+  loop file inside the distribution (the capacity plan shows its size: 181
+  GiB with the defaults and VM targets, 164 GiB with container targets, 141
+  and 124 GiB with one researcher). The incus role preallocates it, but
+  ext4's preallocation writes no data, so `ext4.vhdx` may not grow by that
+  size at install and may grow later, as targets write. Doctor's pool checks
+  (`incus.pool.loop_space_low`, `incus.pool.loop_space_full`) measure the
+  distribution's ext4, not the Windows drive, so they do not catch a full
+  Windows drive: keep at least the pool's size free on the drive that holds
+  `ext4.vhdx`, before the install and as the lab grows.
 - **The Windows side is not observable.** The Windows build, its drivers and
   other Windows load are outside the fingerprint. Measurements include the
   overhead of WSL's virtual machine; reports keep WSL2 results apart from

@@ -107,6 +107,7 @@ string or null
 | `fingerprint.config.infra_dirty` | boolean or null | yes | Whether the repository had uncommitted changes. |
 | `fingerprint.config.versions_lock_sha256` | string or null | yes | sha256 of `versions.lock.yml`. |
 | `fingerprint.config.host_vars_sha256` | string or null | yes | sha256 of the host_vars file. |
+| `fingerprint.config.incus_pool_driver` | one of `lvm`, `null` | yes | The Incus pool's driver (the host profile's `storage_backend`): `lvm` on a lab node, null where no Incus runs. |
 | `fingerprint.config.platform` | see `platform` | yes | The active platform. |
 | `fingerprint.wsl` | object | no | WSL hosts only. |
 | `fingerprint.wsl.wsl_conf` | object | yes | Effective `/etc/wsl.conf`: section to key to value. |

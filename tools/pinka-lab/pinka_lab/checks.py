@@ -18,7 +18,7 @@ import uuid
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from pinka_lab import commands, golden, window
+from pinka_lab import commands, golden, pool, window
 from pinka_lab.doctor import Check, Context, Outcome, failed, passed, skipped
 from pinka_preflight.detect import access as access_detect
 from pinka_preflight.detect import gpu
@@ -961,27 +961,364 @@ def _incus_query(ctx: Context, path: str) -> Any:  # noqa: ANN401 - JSON value
 
 
 def check_incus_pool(ctx: Context) -> Outcome:
-    """The storage pool has the backend preflight chose and enough free space."""
+    """The storage pool has the driver preflight chose."""
     if not ctx.config.runs_lab:
         return skipped("no Incus on this node")
-    pool = str(ctx.config.get("incus", "pool"))
-    info = _incus_query(ctx, f"/1.0/storage-pools/{pool}") or {}
+    name = str(ctx.config.get("incus", "pool"))
+    info = _incus_query(ctx, f"/1.0/storage-pools/{name}") or {}
     driver = info.get("driver")
-    wanted = {"btrfs": "btrfs", "lvm": "lvm"}.get(str(ctx.config.get("incus", "backend")), "")
+    wanted = str(ctx.config.get("incus", "backend"))
     if driver != wanted:
-        return failed(f"pool {pool} uses {driver}, expected {wanted}")
-    space = (_incus_query(ctx, f"/1.0/storage-pools/{pool}/resources") or {}).get("space", {})
-    total, used = int(space.get("total", 0)), int(space.get("used", 0))
-    free_gib = (total - used) / 2**30
-    minimum = float(ctx.config.get("incus", "min_free_gib", default=20))
-    if free_gib < minimum:
-        return failed(f"pool {pool} has {free_gib:.1f} GiB free, less than {minimum:g} GiB")
-    return passed(f"pool {pool} ({driver}), {free_gib:.1f} GiB free")
+        return failed(f"pool {name} uses {driver}, expected {wanted}")
+    # pinka sets volume.size: without it Incus grows an image volume to the
+    # image's size, past what the count takes for an image not yet created.
+    if not str((info.get("config") or {}).get("volume.size") or ""):
+        return failed(f"pool {name} has no volume.size (bootstrap sets it)")
+    return passed(f"pool {name} ({driver})")
 
 
-# Free space per mount point: the runs kept, the trend's window.
+# The metadata levels of the thin pool, fixed: lvmthin(7), dmeventd's first
+# warning at 80 %; a full metadata volume stops every thin volume.
+METADATA_WARN_PERCENT = 80.0
+METADATA_FAIL_PERCENT = 90.0
+# incus.pool.space_low: two image volumes plus a build's temporary one.
+SPACE_LOW_IMAGE_VOLUMES = 3
+# The periodic run's report (pinka-doctor.service).
+PERIODIC_REPORT_DEFAULT = "/var/lib/pinka/doctor/last.json"
+
+
+def _pool_state(ctx: Context) -> dict[str, Any]:
+    """Read the pool once: its configuration, its thin pool and the count.
+
+    Raises:
+        RuntimeError: If LVM or Incus cannot be read completely.
+    """
+    if "pool" not in ctx.memo:
+        name = str(ctx.config.get("incus", "pool"))
+        info = _incus_query(ctx, f"/1.0/storage-pools/{name}") or {}
+        settings = info.get("config") or {}
+        vg = str(settings.get("lvm.vg_name") or name)
+        thin_name = str(settings.get("lvm.thinpool_name") or pool.DEFAULT_THINPOOL)
+        done = ctx.system.run(
+            [
+                "lvs",
+                "--noheadings",
+                "--units",
+                "b",
+                "--nosuffix",
+                "--separator",
+                ",",
+                "-o",
+                ",".join(pool.LVS_FIELDS),
+                vg,
+            ]
+        )
+        if not done.ok:
+            raise RuntimeError(f"lvs {vg} failed: {done.stderr.strip()}")
+        lvs = pool.parse_lvs(done.stdout)
+        thin = next((lv for lv in lvs if lv.name == thin_name), None)
+        if thin is None:
+            raise RuntimeError(f"the thin pool {vg}/{thin_name} is missing")
+        projects = _incus_query(ctx, "/1.0/projects?recursion=1") or []
+        limits = {str(p["name"]): pool.project_limit(p.get("config") or {}, name) for p in projects}
+        volumes = _incus_query(
+            ctx, f"/1.0/storage-pools/{name}/volumes?recursion=1&all-projects=true"
+        )
+        instances = _incus_query(ctx, "/1.0/instances?recursion=1&all-projects=true")
+        volume_size = (
+            pool.size_bytes(str(settings["volume.size"]))
+            if str(settings.get("volume.size") or "")
+            else pool.DEFAULT_VOLUME_SIZE
+        )
+        expected = pool.expected_volumes(volumes or [], instances or [], volume_size)
+        # The extent LVM rounds every volume to (lvm.conf's, as Incus reads it).
+        extents = ctx.system.run(
+            ["vgs", "--noheadings", "--nosuffix", "--units", "b", "-o", "vg_extent_size", vg]
+        )
+        extent_text = extents.stdout.strip() if extents.ok else ""
+        if not extent_text.isdigit():
+            raise RuntimeError(f"the extent size of {vg} cannot be read")
+        source = str(settings.get("source") or "")
+        loop = bool(str(settings.get("size") or "")) and source.startswith("/")
+        if str(settings.get("size") or ""):
+            size: int | None = pool.size_bytes(str(settings["size"]))
+        else:
+            vgs = ctx.system.run(
+                ["vgs", "--noheadings", "--units", "b", "--nosuffix", "-o", "vg_size", vg]
+            )
+            text = vgs.stdout.strip() if vgs.ok else ""
+            size = int(text) if text.isdigit() else None
+        ctx.memo["pool"] = {
+            "name": name,
+            "vg": vg,
+            "source": source,
+            "loop": loop,
+            "size": size,
+            "volume_size": volume_size,
+            "thin": thin,
+            "lvs": lvs,
+            "count": pool.count(thin, lvs, expected, limits, int(extent_text)),
+        }
+    state: dict[str, Any] = ctx.memo["pool"]
+    return state
+
+
+# The parts of preflight's sum outside the thin pool's data.
+OUTSIDE_DATA = ("metadata", "lvm")
+
+
+def check_incus_pool_undersized(ctx: Context) -> Outcome:
+    """The thin pool's data holds the sum preflight computes, less what lies outside it.
+
+    The thin pool, not the volume group or the loop file: a volume group grown
+    without extending the thin pool, or one shared with other volumes, holds
+    space the thin pool cannot use.
+    """
+    if not ctx.config.runs_lab:
+        return skipped("no Incus on this node")
+    state = _pool_state(ctx)
+    required = ((_preflight(ctx) or {}).get("requirements") or {}).get("pool") or {}
+    parts = required.get("parts")
+    if not isinstance(parts, list) or not parts:
+        return failed("preflight gave no parts of the Incus pool's required size")
+    need = int(
+        sum(float(p["size_gib"]) for p in parts if p.get("id") not in OUTSIDE_DATA) * pool.GIB
+    )
+    data = state["thin"].size
+    if data < need:
+        missing = need - data
+        if state["loop"] and state["size"] is not None:
+            grow = (
+                f"grow it: sudo incus storage set {state['name']} "
+                f"size={-(-(state['size'] + missing) // pool.GIB)}GiB (Incus refuses a smaller "
+                "size)"
+            )
+        else:
+            grow = (
+                f"add a disk: sudo vgextend {state['vg']} <device>, then sudo lvextend -l "
+                f"+100%FREE {state['vg']}/{state['thin'].name}"
+            )
+        return failed(
+            f"the thin pool of {state['name']} holds {pool.gib(data)} of data, below the data part "
+            f"of the sum of everything that may be written to it, {pool.gib(need)}: missing "
+            f"{pool.gib(missing)}; {grow}, or lower the projects' limits"
+        )
+    return passed(
+        f"the thin pool of {state['name']} holds {pool.gib(data)}, needs {pool.gib(need)}"
+    )
+
+
+def _uncommitted(ctx: Context) -> tuple[int, int, str]:
+    """The uncommitted space, the space_low level and the count's description."""
+    state = _pool_state(ctx)
+    found: pool.Count = state["count"]
+    level = SPACE_LOW_IMAGE_VOLUMES * int(state["volume_size"])
+    return found.uncommitted, level, found.describe()
+
+
+def check_incus_pool_space_low(ctx: Context) -> Outcome:
+    """The uncommitted space holds two image volumes and a build's temporary one."""
+    if not ctx.config.runs_lab:
+        return skipped("no Incus on this node")
+    left, level, described = _uncommitted(ctx)
+    if left < level:
+        return failed(f"{pool.gib(left)} uncommitted, below {pool.gib(level)} ({described})")
+    return passed(f"{pool.gib(left)} uncommitted ({described})")
+
+
+def check_incus_pool_overcommitted(ctx: Context) -> Outcome:
+    """The pool can hold what the projects' limits and the images promise."""
+    if not ctx.config.runs_lab:
+        return skipped("no Incus on this node")
+    left, _, described = _uncommitted(ctx)
+    if left <= 0:
+        return failed(f"overcommitted by {pool.gib(-left)} ({described})")
+    return passed(f"{pool.gib(left)} uncommitted")
+
+
+def _metadata_percent(ctx: Context) -> float | None:
+    thin: pool.LogicalVolume = _pool_state(ctx)["thin"]
+    return thin.metadata_percent
+
+
+def check_incus_pool_metadata_high(ctx: Context) -> Outcome:
+    """The thin pool's metadata usage is below 80 %."""
+    if not ctx.config.runs_lab:
+        return skipped("no Incus on this node")
+    used = _metadata_percent(ctx)
+    if used is None:
+        return failed("the thin pool's metadata usage cannot be read (is the thin pool active?)")
+    if used >= METADATA_WARN_PERCENT:
+        return failed(f"metadata {used:.1f} % used, at or above {METADATA_WARN_PERCENT:g} %")
+    return passed(f"metadata {used:.1f} % used")
+
+
+def check_incus_pool_metadata_full(ctx: Context) -> Outcome:
+    """The thin pool's metadata usage is below 90 % and can be read."""
+    if not ctx.config.runs_lab:
+        return skipped("no Incus on this node")
+    used = _metadata_percent(ctx)
+    if used is None:
+        return failed("the thin pool's metadata usage cannot be read (is the thin pool active?)")
+    if used >= METADATA_FAIL_PERCENT:
+        return failed(f"metadata {used:.1f} % used, at or above {METADATA_FAIL_PERCENT:g} %")
+    return passed(f"metadata {used:.1f} % used")
+
+
+def check_incus_pool_loop_allocated(ctx: Context) -> Outcome:
+    """A loop pool's file is fully allocated, so the space it was given stays reserved."""
+    if not ctx.config.runs_lab:
+        return skipped("no Incus on this node")
+    state = _pool_state(ctx)
+    if not state["loop"]:
+        return skipped("a dedicated device: no loop file")
+    path = str(state["source"])
+    done = ctx.system.run(["stat", "--format=%s %b %B", path])
+    fields = done.stdout.split() if done.ok else []
+    if len(fields) != 3 or not all(f.isdigit() for f in fields):  # noqa: PLR2004
+        return failed(f"the allocation of the loop file {path} cannot be read")
+    size, blocks, unit = (int(f) for f in fields)
+    allocated = blocks * unit
+    if allocated < size:
+        return failed(
+            f"the loop file {path} has {pool.gib(allocated)} of its {pool.gib(size)} allocated: "
+            f"{pool.gib(size - allocated)} of the pool is not backed by its file system"
+        )
+    return passed(f"the loop file {path} is fully allocated ({pool.gib(size)})")
+
+
+def check_incus_pool_discards(ctx: Context) -> Outcome:
+    """A loop pool's thin pool passes no discards down to the loop file."""
+    if not ctx.config.runs_lab:
+        return skipped("no Incus on this node")
+    state = _pool_state(ctx)
+    if not state["loop"]:
+        return skipped("a dedicated device: LVM's default discards mode")
+    target = f"{state['vg']}/{state['thin'].name}"
+    done = ctx.system.run(["lvs", "--noheadings", "-o", "discards", target])
+    mode = done.stdout.strip() if done.ok else ""
+    if mode != "nopassdown":
+        return failed(f"the thin pool {target} has discards {mode or 'unreadable'}, not nopassdown")
+    return passed(f"the thin pool {target} has discards nopassdown")
+
+
+def check_incus_pool_buckets(ctx: Context) -> Outcome:
+    """No storage bucket exists on the pool: no project limit counts one."""
+    if not ctx.config.runs_lab:
+        return skipped("no Incus on this node")
+    state = _pool_state(ctx)
+    thin = state["thin"].name
+    buckets = sorted(
+        lv.name for lv in state["lvs"] if lv.pool_lv == thin and lv.name.startswith("buckets_")
+    )
+    if buckets:
+        return failed("storage buckets on the pool: " + ", ".join(buckets))
+    return passed("no storage bucket on the pool")
+
+
+def _loop_file_system(ctx: Context) -> tuple[str, str, int] | None:
+    """The mount point, type and free bytes of the file system holding the loop file."""
+    path = str(_pool_state(ctx)["source"])
+    done = ctx.system.run(["df", "--output=target,fstype,avail", "-B1", path])
+    lines = done.stdout.splitlines()[1:] if done.ok else []
+    parts = lines[0].split() if lines else []
+    if len(parts) < 3 or not parts[-1].isdigit():  # noqa: PLR2004
+        return None
+    return " ".join(parts[:-2]), parts[-2], int(parts[-1])
+
+
+def _reserve(ctx: Context) -> int | None:
+    """The free space preflight leaves beside the loop file, in bytes."""
+    disks = ((_preflight(ctx) or {}).get("requirements") or {}).get("disk") or []
+    for mount in disks:
+        for item in mount.get("items") or []:
+            if item.get("id") == "pool-reserve":
+                return int(float(item["size_gib"]) * pool.GIB)
+    return None
+
+
+def check_incus_pool_loop_space_low(ctx: Context) -> Outcome:
+    """The loop file's file system keeps the reserve free (the host can take space under it)."""
+    if not ctx.config.runs_lab:
+        return skipped("no Incus on this node")
+    if not _pool_state(ctx)["loop"]:
+        return skipped("a dedicated device: no loop file")
+    found, reserve = _loop_file_system(ctx), _reserve(ctx)
+    if found is None:
+        return failed("the free space of the loop file's file system cannot be read")
+    if reserve is None:
+        return failed("preflight gave no reserve beside the loop file")
+    mount, fstype, free = found
+    if free < reserve:
+        return failed(
+            f"{mount} ({fstype}) has {pool.gib(free)} free, below the {pool.gib(reserve)} kept "
+            "beside the Incus pool's loop file"
+        )
+    return passed(f"{mount} has {pool.gib(free)} free, reserve {pool.gib(reserve)}")
+
+
+def check_incus_pool_loop_space_full(ctx: Context) -> Outcome:
+    """The loop file's file system has room for three image volumes."""
+    if not ctx.config.runs_lab:
+        return skipped("no Incus on this node")
+    state = _pool_state(ctx)
+    if not state["loop"]:
+        return skipped("a dedicated device: no loop file")
+    found = _loop_file_system(ctx)
+    if found is None:
+        return failed("the free space of the loop file's file system cannot be read")
+    mount, fstype, free = found
+    level = SPACE_LOW_IMAGE_VOLUMES * int(state["volume_size"])
+    if free < level:
+        return failed(
+            f"{mount} ({fstype}) has {pool.gib(free)} free, below three image volumes "
+            f"({pool.gib(level)}): writes into the Incus pool's loop file may fail"
+        )
+    return passed(f"{mount} has {pool.gib(free)} free")
+
+
+def check_incus_pool_loop_nocow(ctx: Context) -> Outcome:
+    """A loop file on btrfs carries No_COW, so writes into it take no new space."""
+    if not ctx.config.runs_lab:
+        return skipped("no Incus on this node")
+    state = _pool_state(ctx)
+    if not state["loop"]:
+        return skipped("a dedicated device: no loop file")
+    found = _loop_file_system(ctx)
+    if found is not None and found[1] != "btrfs":
+        return skipped(f"the loop file is on {found[1]}, not btrfs")
+    path = str(state["source"])
+    done = ctx.system.run(["lsattr", path])
+    fields = done.stdout.split() if done.ok else []
+    if found is None or not fields:
+        return failed(f"the file system or the attributes of the loop file {path} cannot be read")
+    if "C" not in fields[0]:
+        return failed(f"the loop file {path} on btrfs has no No_COW attribute")
+    return passed(f"the loop file {path} has No_COW")
+
+
+def check_doctor_periodic(ctx: Context) -> Outcome:
+    """The periodic run's report is there and younger than twice its interval."""
+    path = str(ctx.config.get("doctor", "report", default=PERIODIC_REPORT_DEFAULT))
+    minutes = int(ctx.config.get("doctor", "periodic_interval_minutes", default=60))
+    text = ctx.system.read_text(path)
+    try:
+        report: Any = json.loads(text or "")
+        checked = dt.datetime.strptime(str(report["checked_at"]), "%Y-%m-%dT%H:%M:%SZ")
+    except (ValueError, TypeError, KeyError):
+        return failed(f"the periodic run's report {path} is missing or unreadable")
+    age = ctx.system.now() - checked.replace(tzinfo=dt.timezone.utc)
+    if age > dt.timedelta(minutes=2 * minutes):
+        return failed(
+            f"the last periodic run was {age.total_seconds() / 60:.0f} minutes ago, "
+            f"more than twice its interval ({minutes} minutes)"
+        )
+    return passed(f"the last periodic run was {age.total_seconds() / 60:.0f} minutes ago")
+
+
+# Free space per mount point: the history (kept for the trend's window, by
+# age, so a short periodic interval never shortens it), the trend's window.
 DISK_HISTORY_DEFAULT = "/var/lib/pinka/doctor/disk-history.json"
-DISK_HISTORY_KEEP = 60
 DISK_TREND_DAYS = 7
 DISK_TREND_MIN_HOURS = 6
 
@@ -1004,6 +1341,15 @@ def _disk_history(ctx: Context, path: str) -> list[dict[str, Any]]:
         return []
     runs = data.get("runs") if isinstance(data, dict) else None
     return [r for r in runs or [] if isinstance(r, dict) and isinstance(r.get("free"), dict)]
+
+
+def _run_at(run_: Mapping[str, Any]) -> dt.datetime:
+    """When a run of the disk history was recorded (the distant past if unreadable)."""
+    try:
+        at = dt.datetime.strptime(str(run_.get("at")), "%Y-%m-%dT%H:%M:%SZ")
+    except ValueError:
+        return dt.datetime.min.replace(tzinfo=dt.timezone.utc)
+    return at.replace(tzinfo=dt.timezone.utc)
 
 
 def _days_until_full(
@@ -1051,7 +1397,8 @@ def check_disk_free_space(ctx: Context) -> Outcome:
     if ctx.system.euid() == 0:
         stamp = now.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         entry = {"at": stamp, "free": {m: free for m, (_, free) in measured.items()}}
-        kept = [*runs, entry][-DISK_HISTORY_KEEP:]
+        since = now - dt.timedelta(days=DISK_TREND_DAYS)
+        kept = [r for r in runs if _run_at(r) >= since] + [entry]
         text = json.dumps({"schema_version": 1, "runs": kept}, indent=2, sort_keys=True)
         ctx.system.write_text(history, text + "\n", 0o644)
     if problems:
@@ -2691,10 +3038,98 @@ CHECKS: tuple[Check, ...] = (
     ),
     Check(
         "incus.pool",
-        "The storage pool has the chosen backend and enough free space.",
-        "warning",
-        "Delete unused instances and images or grow the pool.",
+        "The storage pool has the driver preflight chose.",
+        "error",
+        "The pool was created with another driver: see the section's steps.",
         check_incus_pool,
+    ),
+    Check(
+        "incus.pool.undersized",
+        "The storage pool holds the sum of everything that may be written to it.",
+        "error",
+        "Grow the pool (a loop pool: incus storage set <pool> size=<size>, larger than its current"
+        " size: Incus refuses a smaller size; a device pool: vgextend with another disk, then"
+        " lvextend the thin pool), or lower the projects' limits, then re-run bootstrap.",
+        check_incus_pool_undersized,
+    ),
+    Check(
+        "incus.pool.space_low",
+        "The pool's uncommitted space holds two image volumes and a build's temporary one.",
+        "warning",
+        "Delete unused images or snapshots, lower a project's limits.disk, or grow the pool.",
+        check_incus_pool_space_low,
+    ),
+    Check(
+        "incus.pool.overcommitted",
+        "The pool can hold what the projects' limits and the images promise.",
+        "error",
+        "Delete unused images or snapshots, lower a project's limits.disk, or grow the pool.",
+        check_incus_pool_overcommitted,
+    ),
+    Check(
+        "incus.pool.metadata_high",
+        "The thin pool's metadata usage is below 80 %.",
+        "warning",
+        "Delete unused images, snapshots and instances, or extend the thin pool's metadata.",
+        check_incus_pool_metadata_high,
+    ),
+    Check(
+        "incus.pool.metadata_full",
+        "The thin pool's metadata usage is below 90 % and can be read.",
+        "error",
+        "Extend the thin pool's metadata now (lvextend --poolmetadatasize), or free volumes.",
+        check_incus_pool_metadata_full,
+    ),
+    Check(
+        "incus.pool.loop_allocated",
+        "A loop pool's file is fully allocated.",
+        "error",
+        "Re-run bootstrap: it preallocates the loop file (fallocate).",
+        check_incus_pool_loop_allocated,
+    ),
+    Check(
+        "incus.pool.discards",
+        "A loop pool's thin pool passes no discards down to the loop file.",
+        "error",
+        "Re-run bootstrap: it sets the thin pool to --discards nopassdown.",
+        check_incus_pool_discards,
+    ),
+    Check(
+        "incus.pool.loop_space_low",
+        "A loop pool's file system keeps the reserve beside the file free.",
+        "warning",
+        "Free space on the loop file's file system, or move the pool to a dedicated device.",
+        check_incus_pool_loop_space_low,
+    ),
+    Check(
+        "incus.pool.loop_space_full",
+        "A loop pool's file system has room for three image volumes.",
+        "error",
+        "Free space on the loop file's file system now; writes into the pool may fail.",
+        check_incus_pool_loop_space_full,
+    ),
+    Check(
+        "incus.pool.loop_nocow",
+        "A loop pool's file on btrfs carries No_COW.",
+        "error",
+        "Re-create the pool with a No_COW file: export and delete its instances and volumes,"
+        " remove the profiles' root disks on it, delete the pool (Incus deletes its file), re-run"
+        " bootstrap; or use a dedicated device.",
+        check_incus_pool_loop_nocow,
+    ),
+    Check(
+        "incus.pool.buckets",
+        "No storage bucket exists on the pool.",
+        "error",
+        "Delete the storage buckets (incus storage bucket delete); no project limit counts them.",
+        check_incus_pool_buckets,
+    ),
+    Check(
+        "doctor.periodic",
+        "The periodic doctor run's report is there and younger than twice its interval.",
+        "warning",
+        "Check pinka-doctor.timer and pinka-doctor.service (systemctl status, journalctl).",
+        check_doctor_periodic,
     ),
     Check(
         "incus.objects",

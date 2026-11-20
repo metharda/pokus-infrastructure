@@ -230,34 +230,48 @@ def support_matrix_page(root: Path) -> str:
     )
     out.append(
         "\n## Core requirements\n\nFailing any of these makes the host unsupported, unless a "
-        "provider rule below resolves it as an operator action.\n\n"
+        "provider rule below resolves it as an operator action, or the requirement fails as "
+        "`needs_action` with the change named below.\n\n"
     )
     out.append(
         table(
-            ["Requirement", "Values", "Remediation"],
+            ["Requirement", "Values", "Node roles", "Remediation", "When it fails"],
             [
-                [f"`{r['id']}`", r.get("values"), r.get("remediation")]
+                [
+                    f"`{r['id']}`",
+                    r.get("values"),
+                    ", ".join(r["node_roles"]) if r.get("node_roles") else "all",
+                    r.get("remediation"),
+                    r.get("on_fail", "unsupported"),
+                ]
                 for r in m["core_requirements"]
             ],
         )
     )
-    out.append(f"\n## Storage\n\n{m['storage']['none_reason']}\n\n")
-    out.append(
-        table(
-            ["Order", "Feature", "Backend"],
-            [[i + 1, b["feature"], b["backend"]] for i, b in enumerate(m["storage"]["backends"])],
+    actions = [
+        (r["id"], where, text)
+        for r in m["core_requirements"]
+        if "actions" in r
+        for where, text in [
+            *((f"environment {k}", v) for k, v in r["actions"].get("environments", {}).items()),
+            *((f"family {k}", v) for k, v in r["actions"].get("families", {}).items()),
+            ("otherwise", r["actions"]["default"]),
+        ]
+    ]
+    if actions:
+        out.append(
+            "\n### The change a failed requirement names\n\nThe first that applies: the "
+            "environment's, else the family's, else the default.\n\n"
         )
-    )
+        out.append(
+            table(["Requirement", "Where", "Change"], [[f"`{i}`", w, t] for i, w, t in actions])
+        )
     out.append("\n## Optional features\n\n")
     rows = []
     for name, spec in m["features"].items():
         reqs = [r if isinstance(r, str) else _cell(r) for r in spec["requires"]]
-        rows.append(
-            [f"`{name}`", reqs, spec["on_missing"], spec.get("only_if_missing"), spec.get("impact")]
-        )
-    out.append(
-        table(["Feature", "Requires", "When missing", "Only matters without", "Impact"], rows)
-    )
+        rows.append([f"`{name}`", reqs, spec["on_missing"], spec.get("impact")])
+    out.append(table(["Feature", "Requires", "When missing", "Impact"], rows))
     out.append("\n## Provider rules\n\n")
     rows = []
     for provider, rules in m.get("provider_rules", {}).items():

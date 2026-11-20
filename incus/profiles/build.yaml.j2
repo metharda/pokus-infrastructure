@@ -17,6 +17,7 @@ devices:
     path: /
     pool: "{{ incus_pool_name }}"
     size: "{{ incus_build_instance.root_size }}"
+    size.state: "{{ incus_build_instance.size_state }}"
   eth0:
     type: nic
     name: eth0

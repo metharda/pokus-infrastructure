@@ -273,11 +273,11 @@ def test_values_are_strings() -> None:
     }
     body = mod.create_body(
         "storage_pool",
-        params(kind="storage_pool", name="pinka-targets", driver="btrfs"),
+        params(kind="storage_pool", name="pinka-targets", driver="lvm"),
         {"config": {"size": "300GiB"}},
     )
     assert json.loads(json.dumps(body)) == {
         "config": {"size": "300GiB"},
         "name": "pinka-targets",
-        "driver": "btrfs",
+        "driver": "lvm",
     }

@@ -47,6 +47,9 @@ cert_dir = "/etc/pinka/incus"
 projects = ["bench", "build"]
 run_network_socket = "/run/pinka/run-network.sock"
 cpuset_targets = "8-15"
+bench_limits_disk = 43998248960
+build_limits_disk = 35408314368
+pool_volume_size = 3221225472
 
 [gpu]
 arbiter_socket = "/run/pinka/gpu.sock"

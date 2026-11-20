@@ -288,11 +288,22 @@ class RealSystem(System):
 
     def write_text(self, path: str, text: str, mode: int) -> None:  # noqa: D102
         directory = os.path.dirname(path)
-        os.makedirs(directory, exist_ok=True)
+        # Missing parents are created root's only (0700), each level: makedirs'
+        # mode covers only the last one.
+        missing: list[str] = []
+        parent = directory
+        while parent and not os.path.isdir(parent):
+            missing.append(parent)
+            parent = os.path.dirname(parent)
+        for level in reversed(missing):
+            os.mkdir(level, 0o700)
+            os.chmod(level, 0o700)
         tmp = os.path.join(directory, f".{os.path.basename(path)}.tmp")
-        with open(tmp, "w", encoding="utf-8") as handle:
+        # Created with its mode: no other account can open it while it is written.
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+        os.fchmod(fd, mode)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
             handle.write(text)
-        os.chmod(tmp, mode)
         os.replace(tmp, path)
 
     def info(self, path: str) -> FileInfo | None:  # noqa: D102

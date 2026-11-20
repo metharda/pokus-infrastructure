@@ -1,16 +1,30 @@
 # Managed by pinka (ansible/roles/incus/defaults/main.yml). Local changes will be overwritten.
 
-# Storage pool of all instances, btrfs or LVM thin as
-# preflight decided (host profile storage_backend).
+# Storage pool of all instances: LVM thin, the only driver (ADR-0017).
 incus_pool_name: pinka-targets
-# loop (a file inside the root filesystem) or device (a dedicated disk).
+# loop (a file inside the root filesystem, preallocated) or device (a dedicated disk).
 incus_pool_source: loop
-# Size of a loop pool: auto (computed by preflight from the golden images,
-# the concurrent targets' root disks and a margin, limited by the free space
-# where the loop file goes) or a size such as 300GiB. Preflight checks either
-# against that free space, with the 50 GiB the file leaves beside it. An
-# existing pool keeps its size.
+# Size of a loop pool: auto (the sum preflight computes of everything that may
+# be written to the pool: the projects' disk limits, the image volumes, the
+# thin pool's metadata and a headroom, preflight/requirements.yml pool) or a
+# size such as 300GiB, which must hold that sum. Preflight checks either
+# against the loop file's mount point, with the 50 GiB the file leaves beside
+# it. An existing pool keeps its size; when it is smaller than the sum,
+# preflight reports needs_action before anything changes, and doctor fails
+# incus.pool.undersized.
 incus_pool_size: auto
+# The pool's volume.size, the size of every image volume: auto (just above the
+# largest unpacked image of the blueprints in images/, computed by preflight)
+# or a size such as 4GiB. Incus refuses an image volume larger than it, so an
+# image a researcher imports or the platform derives that is larger cannot be
+# used until this is raised; raising it raises the pool's size, so grow the
+# pool first. Set on new and existing pools.
+incus_pool_volume_size: auto
+# The thin pool's metadata volume, set when the pool is created: lvmthin(7)
+# recommends 1 GiB as enough for all practical purposes; LVM keeps a spare of
+# the same size. Preflight counts both in the pool's size
+# (preflight/requirements.yml pool metadata_gib must equal it).
+incus_pool_metadata_size: 1GiB
 # Dedicated device (use /dev/disk/by-id/...). Nothing is formatted unless
 # incus_pool_device_confirm repeats it exactly.
 incus_pool_device: ""
@@ -39,12 +53,20 @@ incus_max_virtual_machines: 4
 # Targets that run at once: they size the bench
 # project's memory and the memory preflight requires.
 incus_concurrent_targets: 2
+# The limits and sizes mappings below each come with a *_defaults mapping:
+# host_vars set only the keys they change (for example incus_user_limits:
+# {limits.cpu: "8"}), and budget.yml merges them key by key with the
+# defaults before anything renders. Preflight's pool sum takes the same
+# merged values from the plan bootstrap writes. A limits.disk set to null or
+# empty is refused.
+#
 # Limits of the bench project (the sum over all its instances). Its memory is
 # the concurrent targets, each with a probe client, at the target-vm profile's
 # memory with vm_targets and the target-container profile's without (the
 # operator's choice, not a share of the host). Its CPUs are those of
 # cpuset_targets when set (the platform pins targets inside it).
-incus_bench_limits:
+incus_bench_limits: {}
+incus_bench_limits_defaults:
   limits.memory: >-
     {{ (incus_concurrent_targets | int)
        * (((incus_target_vm if pinka_features.vm_targets | default(false) else incus_target_container).memory
@@ -54,19 +76,49 @@ incus_bench_limits:
     {{ (cpuset_targets | pinka_cpuset_cpus | length) if cpuset_targets
        else [(host_profile.hardware.cpu_threads_effective | int) - 2, 1] | max }}
   limits.instances: "40"
+  # The concurrent targets' and their probe clients' root disks, with each VM
+  # target's state volume: what Incus counts (the Incus pool holds it, ADR-0017).
+  limits.disk: >-
+    {{ (incus_concurrent_targets | int)
+       * (((incus_target_vm.root_size | pinka_size_bytes) + (incus_target_vm.size_state | pinka_size_bytes)
+           if pinka_features.vm_targets | default(false)
+           else (incus_target_container.root_size | pinka_size_bytes))
+          + (incus_probe_client.root_size | pinka_size_bytes)) }}B
+# Limits of the build project: two build instances' root disks with their
+# state volumes (a build instance may be a VM), infra's build instance and one
+# build of the platform's at a time (the Incus pool holds it).
+incus_build_limits: {}
+incus_build_limits_defaults:
+  limits.disk: >-
+    {{ 2 * ((incus_build_instance.root_size | pinka_size_bytes)
+            + (incus_build_instance.size_state | pinka_size_bytes)) }}B
 # Defaults of the instance profiles; the platform sets per-blueprint values.
-incus_target_container: {cpu: "1", memory: 1GiB, root_size: 8GiB}
-incus_target_vm: {cpu: "2", memory: 2GiB, root_size: 16GiB}
-incus_probe_client: {cpu: "1", memory: 512MiB, root_size: 4GiB}
-incus_build_instance: {cpu: "2", memory: 2GiB, root_size: 16GiB}
+incus_target_container: {}
+incus_target_container_defaults: {cpu: "1", memory: 1GiB, root_size: 8GiB}
+# A VM target's state volume (size.state, Incus's default) counts in bench's
+# limits.disk and the pool's size.
+incus_target_vm: {}
+incus_target_vm_defaults: {cpu: "2", memory: 2GiB, root_size: 16GiB, size_state: 500MiB}
+incus_probe_client: {}
+incus_probe_client_defaults: {cpu: "1", memory: 512MiB, root_size: 4GiB}
+# A build instance may be a VM: its state volume counts in build's limits.disk.
+incus_build_instance: {}
+incus_build_instance_defaults: {cpu: "2", memory: 2GiB, root_size: 16GiB, size_state: 500MiB}
 
 # Personal projects (one per researcher, used through incus-user).
-incus_user_limits:
+# limits.disk counts in full in the Incus pool's size, once per researcher,
+# so a small default keeps every lab's pool small; a lab whose researchers
+# need more raises it here (host_vars) and the pool grows with it. The
+# default root disk of a personal instance (4 GiB) lets the project hold five
+# containers or four VMs (each with its 500 MiB state volume).
+incus_user_limits: {}
+incus_user_limits_defaults:
   limits.instances: "5"
   limits.cpu: "4"
   limits.memory: 8GiB
-  limits.disk: 60GiB
-incus_user_instance: {cpu: "1", memory: 1GiB, root_size: 10GiB}
+  limits.disk: 20GiB
+incus_user_instance: {}
+incus_user_instance_defaults: {cpu: "1", memory: 1GiB, root_size: 4GiB}
 
 # Client certificates of the platform services: those of the active
 # platform's rendering, {account, short (the directory), name, projects}.

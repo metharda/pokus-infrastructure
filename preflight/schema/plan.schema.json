@@ -16,13 +16,33 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["source", "size_gib"],
-      "description": "The Incus storage pool: a loop file of size_gib counts fully on its mount point; a dedicated device on none. size_gib null: auto, computed from the targets, the golden images and the free space.",
+      "description": "The Incus storage pool: a loop file of size_gib counts fully on its mount point; a dedicated device on none. size_gib null: auto, the sum of everything that may be written to the pool (preflight/requirements.yml pool). volume_size_gib: the pool's volume.size (incus_pool_volume_size); null: auto, just above the largest unpacked image.",
       "properties": {
         "source": {"enum": ["loop", "device"]},
-        "size_gib": {"type": ["number", "null"], "minimum": 0}
+        "size_gib": {"type": ["number", "null"], "minimum": 0},
+        "volume_size_gib": {"type": ["number", "null"], "minimum": 1},
+        "device": {"type": "string", "description": "The dedicated pool device (incus_pool_device, source device); empty for a loop file."}
       }
     },
     "concurrent_targets": {"type": "integer", "minimum": 1, "maximum": 40, "description": "Targets that run at once (incus_concurrent_targets)."},
+    "researchers": {"type": "integer", "minimum": 0, "description": "Researchers, each with a personal Incus project (the length of researchers)."},
+    "personal_disk_gib": {"type": "number", "minimum": 0, "description": "A personal project's limits.disk in GiB (incus_user_limits merged with its defaults); it counts in full, once per researcher, in the Incus pool's size."},
+    "incus_disk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target_vm_root_gib", "target_vm_state_gib", "target_container_root_gib", "probe_client_root_gib", "build_root_gib", "build_state_gib", "bench_limits_disk_gib", "build_limits_disk_gib"],
+      "description": "The sizes the Incus pool's sum reads, from the incus role's profiles and project limits merged key by key with their defaults, as the role renders them. bench_limits_disk_gib and build_limits_disk_gib: an explicit limits.disk of incus_bench_limits or incus_build_limits; null: computed from the profiles.",
+      "properties": {
+        "target_vm_root_gib": {"type": "number", "minimum": 0},
+        "target_vm_state_gib": {"type": "number", "minimum": 0},
+        "target_container_root_gib": {"type": "number", "minimum": 0},
+        "probe_client_root_gib": {"type": "number", "minimum": 0},
+        "build_root_gib": {"type": "number", "minimum": 0},
+        "build_state_gib": {"type": "number", "minimum": 0},
+        "bench_limits_disk_gib": {"type": ["number", "null"], "minimum": 0},
+        "build_limits_disk_gib": {"type": ["number", "null"], "minimum": 0}
+      }
+    },
     "model": {
       "type": ["object", "null"],
       "additionalProperties": false,

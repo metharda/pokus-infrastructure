@@ -86,6 +86,9 @@ TESTED_TEMPLATES = {
     # Tested in test_backup.py:
     ("backup", "backup-job.service.j2"),
     ("backup", "backup-job.timer.j2"),
+    # Tested in test_doctor.py:
+    ("doctor", "pinka-doctor.service.j2"),
+    ("doctor", "pinka-doctor.timer.j2"),
     # Tested in test_run_network.py:
     ("incus", "pinka-run-network.socket.j2"),
     ("incus", "pinka-run-network@.service.j2"),
@@ -1594,6 +1597,7 @@ def test_lab_units_run_in_the_services_slice() -> None:
         text = path.read_text(encoding="utf-8")
         lab_unit = "PartOf=pinka-lab.target" in text or path.name in {
             "backup-job.service.j2",
+            "pinka-doctor.service.j2",
             "pinka-incus-events.service.j2",
             "pinka-gpu-arbiter@.service.j2",
             "pinka-gpu-job@.service.j2",

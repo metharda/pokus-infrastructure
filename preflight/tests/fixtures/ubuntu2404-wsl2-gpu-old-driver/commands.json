@@ -30,6 +30,11 @@
       "stderr": "",
       "stdout": "Mounted on Type 1B-blocks Avail\n/ ext4 1073741824000 429496729600\n"
     },
+    "modprobe -n dm_thin_pool": {
+      "rc": 0,
+      "stderr": "",
+      "stdout": ""
+    },
     "stat -f -c %T /sys/fs/cgroup": {
       "rc": 0,
       "stderr": "",

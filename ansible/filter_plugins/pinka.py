@@ -933,6 +933,32 @@ def size_mib(value: str | int) -> int:
     return -(-int(float(match.group(1)) * factor) // 1024**2)
 
 
+def size_bytes(value: str | int) -> int:
+    """A size in bytes, exactly as Incus reads it (the disk budget of endpoints.toml).
+
+    Args:
+        value: Bytes, or a size as :func:`size_mib` takes it.
+
+    Returns:
+        The size in whole bytes, rounded down (never more than Incus enforces).
+
+    Raises:
+        PinkaFilterError: If the size is malformed.
+    """
+    match = SIZE_RE.match(str(value).strip())
+    if not match:
+        raise PinkaFilterError(f"not a size: {value!r}")
+    unit = match.group(2) or ""
+    factor = SIZE_FACTORS.get(unit if unit.endswith("B") else unit.lower())
+    if factor is None:
+        raise PinkaFilterError(f"unknown size unit in {value!r}")
+    whole, _, fraction = match.group(1).partition(".")
+    exact = int(whole) * factor
+    if fraction:
+        exact += int(fraction) * factor // 10 ** len(fraction)
+    return exact
+
+
 def cpuset_cpus(spec: str | None) -> list[int]:
     """The CPUs of a Linux cpuset list (``cpuset_services``, ``cpuset_targets``).
 
@@ -1475,6 +1501,7 @@ class FilterModule:
             "pinka_unit_hardening": unit_hardening,
             "pinka_cpuset_cpus": cpuset_cpus,
             "pinka_size_mib": size_mib,
+            "pinka_size_bytes": size_bytes,
             "pinka_vault_keys": vault_keys,
             "pinka_researcher_memberships": researcher_memberships,
             "pinka_account_ids": account_ids,

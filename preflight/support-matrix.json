@@ -389,23 +389,31 @@
       "remediation": "The kernel must provide overlay, br_netfilter, nf_tables and veth (built in or loadable)."
     },
     {
+      "id": "lvm_thin_pool",
+      "on_fail": "needs_action",
+      "node_roles": [
+        "full",
+        "lab"
+      ],
+      "remediation": "The Incus pool needs LVM thin provisioning: the kernel module dm_thin_pool must be loaded, built in or loadable.",
+      "actions": {
+        "default": "Load the kernel module dm_thin_pool (sudo modprobe dm_thin_pool) or boot a kernel that provides it, then re-run bootstrap.",
+        "families": {
+          "debian": "Install the running kernel's modules package (Ubuntu: sudo apt-get install linux-modules-$(uname -r); Debian: the linux-image package of the running kernel), or boot the distribution's standard kernel, then re-run bootstrap.",
+          "redhat": "Install the running kernel's core modules (sudo dnf install kernel-modules-core-$(uname -r)), or boot the distribution's standard kernel, then re-run bootstrap.",
+          "suse": "Boot the distribution's standard kernel (package kernel-default), which ships dm_thin_pool, then re-run bootstrap.",
+          "archlinux": "Boot the distribution's standard kernel (package linux or linux-lts), which ships dm_thin_pool, then re-run bootstrap."
+        },
+        "environments": {
+          "wsl2": "Make the WSL kernel's modules loadable in this distribution (update WSL from Windows with 'wsl --update', then 'wsl --shutdown'), check with 'sudo modprobe -n -v dm_thin_pool', then re-run bootstrap."
+        }
+      }
+    },
+    {
       "id": "no_blocking_conflicts",
       "remediation": "Resolve every blocking conflict listed above."
     }
   ],
-  "storage": {
-    "backends": [
-      {
-        "feature": "btrfs_pool",
-        "backend": "btrfs"
-      },
-      {
-        "feature": "lvm_thin_pool",
-        "backend": "lvm"
-      }
-    ],
-    "none_reason": "No quota-capable storage: neither btrfs nor LVM thin provisioning (dm_thin_pool) is available. A `dir` storage backend cannot enforce disk quotas, so disk-exhaustion scenarios would fill the host disk."
-  },
   "features": {
     "gpu_inference": {
       "requires": [
@@ -524,22 +532,6 @@
       ],
       "on_missing": "degrade",
       "impact": "No KVM: VM-class scenarios (kernel-level faults) cannot run on this host."
-    },
-    "btrfs_pool": {
-      "requires": [
-        "btrfs_available"
-      ],
-      "on_missing": "fallback",
-      "fallback": "lvm_thin_pool",
-      "impact": "No btrfs: the Incus pool falls back to LVM thin provisioning."
-    },
-    "lvm_thin_pool": {
-      "requires": [
-        "dm_thin_pool_available"
-      ],
-      "on_missing": "degrade",
-      "only_if_missing": "btrfs_pool",
-      "impact": "No LVM thin provisioning."
     },
     "dcgm_metrics": {
       "requires": [

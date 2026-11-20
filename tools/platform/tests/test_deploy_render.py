@@ -27,7 +27,17 @@ PORTS = {
     "docs_serve": 18706,
     "inference_control": 18710,
 }
-LAB = {"machine_name": "pinka-lab", "lab_mode": "production", "node_role": "full", "ports": PORTS}
+LAB = {
+    "machine_name": "pinka-lab",
+    "lab_mode": "production",
+    "node_role": "full",
+    "ports": PORTS,
+    "incus_disk": {
+        "bench_limits_disk": 2 * (16384 + 500 + 4096) * 2**20,
+        "build_limits_disk": 2 * (16384 + 500) * 2**20,
+        "pool_volume_size": 3 * 2**30,
+    },
+}
 SCHEMA = {
     "$comment": "annotations are allowed",
     "type": "object",

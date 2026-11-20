@@ -4,7 +4,7 @@
   },
   "outcome": "unsupported",
   "unsupported_contains": [
-    "disk: / has 94.5 GiB free and these choices need 94.6 GiB there: ",
-    "the free space kept beside the Incus pool (loop file): 50.0 GiB, missing 0.1 GiB on /"
+    "disk: / has 264.5 GiB free and these choices need 264.6 GiB there: ",
+    "the Incus pool (loop file): 200.0 GiB, missing 0.1 GiB on /"
   ]
 }

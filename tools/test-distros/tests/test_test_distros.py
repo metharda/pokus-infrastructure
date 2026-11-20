@@ -538,7 +538,7 @@ def test_a_passing_test(tmp_path: Path) -> None:
     }
     launch = next(c for c in fake.calls if c[1] == "launch")
     assert launch[2:5] == ("images:debian/13/cloud", "ptd-debian-13-abcdef", "--vm")
-    assert launch[-2:] == ("--device", "root,size=130GiB")
+    assert launch[-2:] == ("--device", "root,size=220GiB")
     assert "limits.cpu=8" in launch and "limits.memory=10GiB" in launch
     scripts = fake.scripts()
     assert any(harness.DISABLE_MANAGERS in s for s in scripts)
@@ -1698,7 +1698,12 @@ def test_every_target_meets_the_requirement_of_what_it_installs(tmp_path: Path) 
     matrix = yaml.safe_load((INFRA / "preflight" / "support-matrix.yml").read_text())
     data = requirements.load_requirements()
     ci = answers_mod.Answers.from_dict(yaml.safe_load((INFRA / "tests/answers/ci.yml").read_text()))
-    plan = plan_mod.plan(data["defaults"], hostvars.host_vars(ci), {"models": []})
+    # The researchers go to group_vars (the installer writes them there).
+    variables = {
+        **hostvars.host_vars(ci),
+        "researchers": [{"name": r.name} for r in ci.researchers],
+    }
+    plan = plan_mod.plan(data["defaults"], variables, {"models": []})
     for path in ("var/lib", "srv"):
         (tmp_path / path).mkdir(parents=True)
     df = f"Mounted on Type 1B-blocks Avail\n/ ext4 {2**50} {2**45}\n"
@@ -1728,7 +1733,11 @@ def test_every_target_meets_the_requirement_of_what_it_installs(tmp_path: Path) 
         assert _gib(target.memory) >= needed.required_gib + KERNEL_RESERVE_GIB, target.id
         assert _gib(target.disk) >= disk.required_gib + SYSTEM_GIB, target.id
     # The defaults sit at these values: a change of the estimates shows here.
-    assert (needed.required_gib, disk.required_gib) == (8.0, 87.2)
+    assert (needed.required_gib, disk.required_gib) == (8.0, 177.2)
+    # The Incus pool: bench 40.98 (2 VM targets with probe clients) + build 32.98
+    # (2 build instances with their VM state) + one researcher's 20 + one image
+    # volume of 3 GiB + 2 + 1 + 20, rounded up.
+    assert needed.pool["required_gib"] == 120
     # The CPU-only training flow runs: its job fits the computed cap's floor.
     assert (needed.switches.serves, needed.switches.runs) == (False, "cpu")
     assert needed.switches.memory_max_gib == data["training_cap"]["floor_gib"] == 4

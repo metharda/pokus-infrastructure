@@ -17,7 +17,6 @@
     "environment",
     "minimums",
     "core_requirements",
-    "storage",
     "features",
     "provider_rules"
   ],
@@ -123,29 +122,37 @@
         "properties": {
           "id": {"$ref": "#/$defs/identifier"},
           "values": {"type": "array", "minItems": 1, "items": {"type": "string"}},
-          "remediation": {"$ref": "#/$defs/text"}
-        }
-      }
-    },
-    "storage": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["backends", "none_reason"],
-      "properties": {
-        "backends": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
+          "remediation": {"$ref": "#/$defs/text"},
+          "node_roles": {
+            "description": "The node roles the requirement applies to; every role when absent.",
+            "type": "array",
+            "minItems": 1,
+            "items": {"enum": ["full", "lab", "inference"]}
+          },
+          "on_fail": {
+            "description": "needs_action: a failure is an operator action (the text of `actions` for the environment, else the family, else `default`), not unsupported.",
+            "enum": ["needs_action"]
+          },
+          "actions": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["feature", "backend"],
+            "required": ["default"],
             "properties": {
-              "feature": {"$ref": "#/$defs/identifier"},
-              "backend": {"enum": ["btrfs", "lvm"]}
+              "default": {"$ref": "#/$defs/text"},
+              "families": {
+                "type": "object",
+                "propertyNames": {"enum": ["debian", "redhat", "suse", "archlinux"]},
+                "additionalProperties": {"$ref": "#/$defs/text"}
+              },
+              "environments": {
+                "type": "object",
+                "propertyNames": {"enum": ["baremetal", "vm", "wsl2"]},
+                "additionalProperties": {"$ref": "#/$defs/text"}
+              }
             }
           }
         },
-        "none_reason": {"$ref": "#/$defs/text"}
+        "dependentRequired": {"on_fail": ["actions"], "actions": ["on_fail"]}
       }
     },
     "features": {
@@ -159,7 +166,6 @@
           "requires": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/requirement"}},
           "on_missing": {"enum": ["degrade", "fallback"]},
           "fallback": {"$ref": "#/$defs/identifier"},
-          "only_if_missing": {"$ref": "#/$defs/identifier"},
           "impact": {"$ref": "#/$defs/text"},
           "remediation": {
             "description": "Remediation per unmet requirement: the variant of the environment class, else `unknown` when the fact was not reported, else `default`; {actual} and {required} are filled in.",

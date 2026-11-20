@@ -19,6 +19,13 @@
     - name: Install the deployment tool
       ansible.builtin.include_tasks: engine.yml
 
+    # endpoints.toml's [incus] disk budget, from the values that set the
+    # projects' limits.disk and the pool's volume.size.
+    - name: Read the Incus disk budget
+      ansible.builtin.include_role:
+        name: incus
+        tasks_from: budget
+
     - name: Set up the sources
       ansible.builtin.include_tasks: sources.yml
 

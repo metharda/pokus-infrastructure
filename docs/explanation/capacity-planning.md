@@ -224,31 +224,35 @@ What is known at install time is checked per mount point, item by item:
 - the model's files below the research space, their sizes from
   `models.lock.yml`;
 - the Incus pool: a loop file counts fully on its mount point
-  (`/var/lib/incus/disks/`), a dedicated device on none; its default size is
-  computed (see [The pool's size](#the-pools-size));
+  (`/var/lib/incus/disks/`; the incus role preallocates it), a dedicated
+  device on none; its default size is computed (see
+  [The pool's size](#the-pools-size)); an existing loop file still sparse
+  needs its unallocated part there;
 - the free space a loop file leaves beside it: 50 GiB on the same mount
-  point, an item of its own (an estimate, `loop_reserve_gib` in
-  `preflight/requirements.yml`, never below 50), so the host keeps room for
-  its own use while the pool's file, which counts fully but grows only with
-  use, fills; none beside a dedicated device;
+  point (an estimate, `loop_reserve_gib` in `preflight/requirements.yml`,
+  never below 50), so the host keeps room for its own use and for space its
+  file system takes under the file; none beside a dedicated device. Beside a
+  new file it is an item of its own, a shortfall like any other. Beside an
+  existing file preflight gives doctor's answer for the same condition: what
+  the file system keeps free after the install's other items, below the
+  reserve, a warning (doctor's `incus.pool.loop_space_low`); below three image
+  volumes, an operator action (`incus.pool.loop_space_full`);
 - each golden image to build, its estimate from its `image.yaml`, twice:
   the export below the research space and Incus's image store.
 
 What is already on the host (a pulled image, a downloaded model, a built
-golden image, the pool's file, and with the file the free space beside it)
-needs no more space and counts nothing, so preflight gives the same answer on
+golden image, the pool's file once fully allocated) needs no more space and
+counts nothing, so preflight gives the same answer on
 a re-run. When a mount point is short, the host is `unsupported` and the
 shortfall is listed with the largest items first, the ones to shrink, for
 example, with an explicit `incus_pool_size: 300GiB` on a host with 100 GiB
 free, `the Incus pool (loop file): 300.0 GiB, missing 282.3 GiB on /`. The
-free space kept beside a loop file is never shrunk: where it carries the
-shortfall (a pool of 50 GiB or less), free space on that file system, put
-the pool on a dedicated device, or move what else is there. The
-check is preflight's alone, so it applies whether the installer, an answers
-file or host_vars written by hand set the size; with a 30 GiB loop file and
-everything on one file system, 0.01 GiB short of the 50 GiB beside it reads
-`the free space kept beside the Incus pool (loop file): 50.0 GiB, missing
-0.1 GiB on /`.
+free space kept beside a loop file and the pool's computed size are never
+shrunk: free space on that file system, put the pool on a dedicated device,
+or move what else is there. The check is preflight's alone, so it applies
+whether the installer, an answers file or host_vars written by hand set the
+size; with a 200 GiB loop file and everything on one file system, 0.01 GiB
+short reads `the Incus pool (loop file): 200.0 GiB, missing 0.1 GiB on /`.
 
 The comparison is exact, in bytes: a shortfall of any size refuses, a
 single byte included. The disk figures of the requirements print the same
@@ -258,11 +262,11 @@ its free space rounded down and what is missing rounded up, to a tenth of a
 GiB, so none of them shows a fit where preflight refuses; where it fits, to
 the nearest tenth. Each is rounded on its own, so the need less the free
 space can read up to 0.2 GiB more than what is missing. So 0.001 GiB short
-of the 94.6 GiB that setup needs reads `/ has 94.5 GiB free and these
-choices need 94.6 GiB there`, and the summary's line `94.5 GiB free, 94.6
+of the 264.6 GiB that setup needs reads `/ has 264.5 GiB free and these
+choices need 264.6 GiB there`, and the summary's line `264.5 GiB free, 264.6
 GiB needed at install, 0.1 GiB missing`. The summary's Hardware section
 shows each file system's free space as measured, to the nearest tenth
-(`94.6 GiB free` there).
+(`264.6 GiB free` there).
 
 Under WSL2 the free space preflight measures is the WSL virtual disk's
 (`ext4.vhdx`, which grows up to its maximum size), not the Windows drive's:
@@ -272,47 +276,82 @@ free space yourself ([WSL2 hosts](../providers/wsl2.md#known-limitations)).
 
 ## The pool's size
 
-A loop pool's size is `incus_pool_size: auto` unless you set one; preflight
-computes it like the training cap, from what the pool holds:
+The Incus pool holds the sum of everything that may be written to it
+([ADR-0017](../adr/0017-lvm-thin-only-for-the-incus-pool.md)). One formula
+gives `incus_pool_size: auto` and checks an explicit size:
 
-- the golden images to build (each blueprint's estimate);
-- the root disks of the concurrent targets, each with its probe client (a
-  VM target 16 GiB where the host has VM targets, a container 8 GiB, the
-  probe client 4 GiB); or the build instance's 16 GiB when golden images
-  are built and it is larger, since a build runs while no target runs;
-- a margin of 50 % for the instances' copy-on-write changes, snapshots and
-  the targets' own data;
+- the `limits.disk` of `bench`: the concurrent targets' root disks, each
+  with its probe client (a VM target 16 GiB with its 500 MiB state volume
+  where the host has VM targets, a container 8 GiB, the probe client 4 GiB);
+- the `limits.disk` of `build`: two build instances' root disks (16 GiB
+  each) with their 500 MiB state volumes (a build instance may be a VM),
+  infra's and one of the platform's at a time;
+- the `limits.disk` of every personal project: 20 GiB per researcher by
+  default (`incus_user_limits`), room for five containers or four VMs at
+  the default 4 GiB root disk;
+- the image volumes: the golden images, the upstream base image and one
+  more for a new version beside the old, each the pool's `volume.size`;
+- the thin pool's metadata volume and its spare (1 GiB each), LVM's own
+  overhead (1 GiB) and a headroom of 20 GiB for the images no limit counts;
 
-rounded up to whole GiB. It is limited by the free space on the loop file's
-mount point minus pinka's other needs there: the other items at install
-(the 50 GiB the file leaves beside it among them) and, when the research
-space is on the same file system, what the stores hold at their retention.
-It is never below 30 GiB, the pool the distribution test VMs install with;
-where that does not fit, the host is refused like any other shortfall. The
-summary shows the size and how it was computed.
+rounded up to whole GiB. The limits are caps and snapshots are blocked in
+`bench` and `build` (and, by Incus's default for restricted projects, in the
+personal projects), so no percentage is added. Each part, with its value
+and source, is in `preflight/requirements.yml`; the summary and the
+installer's capacity plan show the parts.
 
-With the defaults (two concurrent targets, the golden images, one file
-system for everything):
+`volume.size` (`incus_pool_volume_size: auto`) is just above the largest
+unpacked image of the blueprints in `images/`: the largest estimate times
+2.5, rounded up, plus 1 GiB for the volume's filesystem, 3 GiB with the
+default blueprints. Incus refuses an image larger than it, so an image a
+researcher imports, or the platform derives, that is larger cannot be used
+until you raise it; raising it raises the pool's size, so grow the pool
+first.
 
-| Free on `/` | VM targets | Container targets |
+With the defaults (two concurrent targets, the six golden images):
+
+| Researchers | VM targets | Container targets |
 | --- | --- | --- |
-| 386 GiB | 66 GiB | 42 GiB |
-| 144 GiB | 64 GiB (limited) | 42 GiB |
-| 60 GiB | 30 GiB (limited, the floor): refused, 34.6 GiB short | 30 GiB: refused, 34.6 GiB short |
+| 1 | 141 GiB | 124 GiB |
+| 3 | 181 GiB | 164 GiB |
+| 5 | 221 GiB | 204 GiB |
 
-An explicit size (`incus_pool_size: 300GiB`, or a number in the installer)
-wins and is checked like every other item. Incus creates the pool once and
-never resizes it: on a re-run the existing pool keeps its size, and preflight
-counts it as present.
+The computed size is never cut down: where its mount point lacks room, the
+host is refused like any other shortfall. An existing pool keeps its size
+(pinka never resizes a pool) and is measured by its thin pool, whatever
+source the plan names: where it is smaller than the sum (less the metadata
+and LVM's overhead, which lie outside the thin pool's data), as where an
+explicit size or a dedicated device is, preflight reports `needs_action`
+before anything changes, with the exact numbers and the remedies: grow the
+pool, or lower the limits. A pool preflight cannot measure is an operator
+action too. Doctor's `incus.pool.undersized` reports it at run time
+([How to fix a failed doctor check](../how-to/fix-doctor-checks.md#check-incus-pool-undersized)).
+The profiles' sizes and the projects' limits in host_vars (`incus_target_vm`,
+`incus_user_limits` and the others) are merged key by key with their
+defaults, so the sum and the rendered limits come from the same values; a
+`limits.disk` set to null or empty is refused.
+
+A loop pool's space is watched, not guaranteed: the host's file system can
+take more space under the preallocated file. On btrfs the role gives a new
+file No_COW, but a snapshot of the subvolume that holds it (snapper,
+timeshift), a scrub or a balance still makes later writes take new space,
+and an existing file without No_COW needs an operator action. On WSL the
+virtual disk on the Windows drive may not grow with the preallocation: keep
+at least the pool's size free on that drive. A lab that must not depend on
+the host's free space uses a dedicated device
+([How doctor counts the Incus pool](incus-pool-accounting.md#under-a-loop-pool)).
+Images have no hard limit: doctor counts the pool at its worst case and
+warns before images fill the headroom
+([How doctor counts the Incus pool](incus-pool-accounting.md)).
 
 ## What grows with use
 
 What grows is never a reason to refuse. Preflight shows it below the
 breakdown: per store, its growth per day and the size its retention holds it
 to, then the growth per day and per week below the research space and the
-day the disk fills at that rate. The 50 GiB kept beside a loop file counts as
-free there: the day is when the disk is full, not when the stores reach that
-reserve. Where there is no day, the line says why: nothing grows there, the
+day the disk fills at that rate. The 50 GiB kept beside a loop file is not
+room the stores can grow into: the day is when the stores reach that
+reserve, where doctor's `incus.pool.loop_space_low` warns. Where there is no day, the line says why: nothing grows there, the
 free space is not measured, or the stores, with their retention's limits,
 stay below the free space for ten years.
 
@@ -335,7 +374,7 @@ one within 7 days ([`disk.free_space`](../how-to/fix-doctor-checks.md#check-disk
 | Choice | Setting (host_vars) | Installer answers |
 | --- | --- | --- |
 | concurrent targets | `incus_concurrent_targets` | `resources.concurrent_targets` |
-| pool | `incus_pool_source`, `incus_pool_size` (`auto`: computed) | `storage` |
+| pool | `incus_pool_source`, `incus_pool_size` (`auto`: computed), `incus_pool_volume_size`, `incus_user_limits` | `storage` |
 | model | `vllm_default_deployment` | `gpu.default_model` |
 | serving profile | `vllm_profile` | `gpu.vllm_profile` |
 | golden images | `images_blueprints` | `images.build` |

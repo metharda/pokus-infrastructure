@@ -1,0 +1,57 @@
+# Managed by pinka (ansible/roles/incus/tasks/budget.yml). Local changes will be overwritten.
+#
+# The pool's image volume size and the disk budget the platform reads in
+# endpoints.toml's [incus] section. desired.yml sets the pool's volume.size
+# and the projects' limits.disk from the same values, and the platform role
+# includes this file before it writes the endpoints file.
+
+# Each limits and sizes mapping of host_vars is merged key by key with its
+# defaults, the profiles first: the defaults of bench's and build's limits
+# are computed from them. Preflight's pool sum takes the same merged values
+# (the plan); a limits.disk set to null or empty is refused.
+- name: Merge the profiles' sizes with their defaults
+  ansible.builtin.set_fact:
+    incus_target_container: "{{ incus_target_container_defaults | combine(incus_target_container | default({}, true)) }}"
+    incus_target_vm: "{{ incus_target_vm_defaults | combine(incus_target_vm | default({}, true)) }}"
+    incus_probe_client: "{{ incus_probe_client_defaults | combine(incus_probe_client | default({}, true)) }}"
+    incus_build_instance: "{{ incus_build_instance_defaults | combine(incus_build_instance | default({}, true)) }}"
+    incus_user_instance: "{{ incus_user_instance_defaults | combine(incus_user_instance | default({}, true)) }}"
+
+- name: Merge the projects' limits with their defaults
+  ansible.builtin.set_fact:
+    incus_bench_limits: "{{ incus_bench_limits_defaults | combine(incus_bench_limits | default({}, true)) }}"
+    incus_build_limits: "{{ incus_build_limits_defaults | combine(incus_build_limits | default({}, true)) }}"
+    incus_user_limits: "{{ incus_user_limits_defaults | combine(incus_user_limits | default({}, true)) }}"
+
+- name: Refuse a limits.disk set to null or empty
+  ansible.builtin.assert:
+    that:
+      - item.value['limits.disk'] is not none
+      - item.value['limits.disk'] | string | trim | length > 0
+    fail_msg: >-
+      {{ item.key }} limits.disk is null or empty: the Incus pool's size counts every
+      project's limits.disk, so a project without one is not allowed; set a size or
+      leave the key out to take the default.
+    quiet: true
+  loop: "{{ {'incus_bench_limits': incus_bench_limits, 'incus_build_limits': incus_build_limits,
+             'incus_user_limits': incus_user_limits} | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+
+# incus_pool_volume_size: auto takes the volume.size preflight computed for
+# this host (requirements.pool of the host profile bootstrap passes).
+- name: Decide the pool's image volume size
+  ansible.builtin.set_fact:
+    incus_pool_volume_size_value: >-
+      {{ ((host_profile.requirements.pool.volume_size_gib | int) ~ 'GiB')
+         if (incus_pool_volume_size | string) == 'auto' else incus_pool_volume_size }}
+
+# In bytes, exactly as Incus reads them (rounded down, never more than Incus
+# enforces): the bench and build projects' limits.disk (build's is shared
+# with infra's own golden image builds) and the pool's volume.size.
+- name: Describe the disk budget the platform reads
+  ansible.builtin.set_fact:
+    incus_disk_budget:
+      bench_limits_disk: "{{ incus_bench_limits['limits.disk'] | pinka_size_bytes }}"
+      build_limits_disk: "{{ incus_build_limits['limits.disk'] | pinka_size_bytes }}"
+      pool_volume_size: "{{ incus_pool_volume_size_value | pinka_size_bytes }}"

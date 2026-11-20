@@ -131,7 +131,8 @@ options:
   added:
     description: >-
       add only; the items to merge: components (name to true), packages, holds, accounts,
-      groups, tailscale_serve, repo_keys, incus_objects, closed_access (lists of names),
+      groups, tailscale_serve, repo_keys, incus_objects, closed_access, paths (directories
+      pinka created outside its own paths, removed by uninstall when empty) (lists of names),
       memberships ({user, group}), keys ({user, key}) and changed (setting to its value
       before pinka changed it; the first value recorded stays). remove only; closed_access,
       the listeners reachable again.
@@ -150,6 +151,7 @@ LIST_KEYS = (
     "repo_keys",
     "incus_objects",
     "closed_access",
+    "paths",
 )
 # Settings pinka changes, with their value before the first change.
 CHANGED = "changed"

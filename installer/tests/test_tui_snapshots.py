@@ -39,7 +39,8 @@ THEMES = {"dark": "textual-dark", "light": "textual-light"}
 # Next waits), its first red bar opened to its items; "capacity_forced" is the
 # degraded host made unsupported by another fixture's reason and forced on the
 # Preflight screen: the yellow bar and its reason stay, without a consent;
-# "capacity_baremetal" is the page on bare metal, with the NVIDIA driver field.
+# "capacity_baremetal" is the page on bare metal, with the NVIDIA driver field;
+# "capacity_pool" is the page scrolled to the Incus pool's line and its parts.
 CAPACITY_HOSTS = {
     "capacity_degraded": "ubuntu2404-memory-below-recommended",
     "capacity_short": "ubuntu2404-disk-shortfall",
@@ -47,8 +48,8 @@ CAPACITY_HOSTS = {
     "capacity_driver": "ubuntu2404-baremetal-nvidia-driver-loaded",
     "capacity_baremetal": "ubuntu2404-baremetal-nvidia-driver-loaded",
 }
-# An unsupported reason an operator can force (no storage backend).
-FORCED_REASON = "ubuntu2404-no-btrfs-no-dmthin"
+# An unsupported reason an operator can force (a failed core requirement).
+FORCED_REASON = "ubuntu2404-cgroup-v1"
 SCREEN_NAMES = [
     *SCREENS,
     "signal",
@@ -58,6 +59,7 @@ SCREEN_NAMES = [
     "capacity_short",
     "capacity_forced",
     "capacity_baremetal",
+    "capacity_pool",
 ]
 
 
@@ -124,6 +126,7 @@ def filled(repo: Paths, screen: str, theme: str) -> InstallerApp:
         "capacity_short": "capacity",
         "capacity_forced": "capacity",
         "capacity_baremetal": "capacity",
+        "capacity_pool": "capacity",
     }.get(screen, screen)
     return app(ctx, first=first, theme=theme)
 
@@ -148,6 +151,9 @@ def before(screen: str) -> Callable[[Pilot[Any]], Any]:
             await settle(pilot)
         if screen == "shared":
             pilot.app.screen.query_one("#close").scroll_visible(animate=False, top=True)
+            await settle(pilot)
+        if screen == "capacity_pool":
+            pilot.app.screen.query_one("#pool-line").scroll_visible(animate=False, top=True)
             await settle(pilot)
         if screen == "capacity_short":
             red = pilot.app.screen.query("Collapsible.does_not_fit").first(Collapsible)

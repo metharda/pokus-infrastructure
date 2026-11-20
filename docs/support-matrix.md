@@ -84,36 +84,39 @@ Below *required* the host is unsupported; below *recommended* preflight warns. M
 
 ## Core requirements
 
-Failing any of these makes the host unsupported, unless a provider rule below resolves it as an operator action.
+Failing any of these makes the host unsupported, unless a provider rule below resolves it as an operator action, or the requirement fails as `needs_action` with the change named below.
 
-| Requirement | Values | Remediation |
+| Requirement | Values | Node roles | Remediation | When it fails |
+| --- | --- | --- | --- | --- |
+| `systemd_pid1` | — | all | PID 1 must be systemd. | unsupported |
+| `cgroup2_unified` | — | all | Boot with the unified cgroup v2 hierarchy (systemd.unified_cgroup_hierarchy=1) or use a release that defaults to it. | unsupported |
+| `cgroup2_controllers` | cpu, cpuset, memory, io, pids | all | The cgroup v2 controllers cpu, cpuset, memory, io and pids must be available. | unsupported |
+| `dev_net_tun` | — | all | /dev/net/tun must exist (tun module or built-in); Tailscale needs it. | unsupported |
+| `kernel_features` | overlay, br_netfilter, nf_tables, veth | all | The kernel must provide overlay, br_netfilter, nf_tables and veth (built in or loadable). | unsupported |
+| `lvm_thin_pool` | — | full, lab | The Incus pool needs LVM thin provisioning: the kernel module dm_thin_pool must be loaded, built in or loadable. | needs_action |
+| `no_blocking_conflicts` | — | all | Resolve every blocking conflict listed above. | unsupported |
+
+### The change a failed requirement names
+
+The first that applies: the environment's, else the family's, else the default.
+
+| Requirement | Where | Change |
 | --- | --- | --- |
-| `systemd_pid1` | — | PID 1 must be systemd. |
-| `cgroup2_unified` | — | Boot with the unified cgroup v2 hierarchy (systemd.unified_cgroup_hierarchy=1) or use a release that defaults to it. |
-| `cgroup2_controllers` | cpu, cpuset, memory, io, pids | The cgroup v2 controllers cpu, cpuset, memory, io and pids must be available. |
-| `dev_net_tun` | — | /dev/net/tun must exist (tun module or built-in); Tailscale needs it. |
-| `kernel_features` | overlay, br_netfilter, nf_tables, veth | The kernel must provide overlay, br_netfilter, nf_tables and veth (built in or loadable). |
-| `no_blocking_conflicts` | — | Resolve every blocking conflict listed above. |
-
-## Storage
-
-No quota-capable storage: neither btrfs nor LVM thin provisioning (dm_thin_pool) is available. A `dir` storage backend cannot enforce disk quotas, so disk-exhaustion scenarios would fill the host disk.
-
-| Order | Feature | Backend |
-| --- | --- | --- |
-| 1 | btrfs_pool | btrfs |
-| 2 | lvm_thin_pool | lvm |
+| `lvm_thin_pool` | environment wsl2 | Make the WSL kernel's modules loadable in this distribution (update WSL from Windows with 'wsl --update', then 'wsl --shutdown'), check with 'sudo modprobe -n -v dm_thin_pool', then re-run bootstrap. |
+| `lvm_thin_pool` | family debian | Install the running kernel's modules package (Ubuntu: sudo apt-get install linux-modules-$(uname -r); Debian: the linux-image package of the running kernel), or boot the distribution's standard kernel, then re-run bootstrap. |
+| `lvm_thin_pool` | family redhat | Install the running kernel's core modules (sudo dnf install kernel-modules-core-$(uname -r)), or boot the distribution's standard kernel, then re-run bootstrap. |
+| `lvm_thin_pool` | family suse | Boot the distribution's standard kernel (package kernel-default), which ships dm_thin_pool, then re-run bootstrap. |
+| `lvm_thin_pool` | family archlinux | Boot the distribution's standard kernel (package linux or linux-lts), which ships dm_thin_pool, then re-run bootstrap. |
+| `lvm_thin_pool` | otherwise | Load the kernel module dm_thin_pool (sudo modprobe dm_thin_pool) or boot a kernel that provides it, then re-run bootstrap. |
 
 ## Optional features
 
-| Feature | Requires | When missing | Only matters without | Impact |
-| --- | --- | --- | --- | --- |
-| `gpu_inference` | nvidia_gpu_usable, gpu_vram_mib_min: 8000, gpu_compute_capability_min: 7.5, driver_cuda_min: 13.0.2 | degrade | — | No usable GPU: vLLM will not be installed; inference campaigns cannot run on this host. |
-| `gpu_training` | nvidia_gpu_usable, gpu_vram_mib_min: 8000, gpu_compute_capability_min: 7.0 | degrade | — | No usable GPU for training: no training job gets a GPU; with training: cpu the jobs' CPU-only variant runs. |
-| `vm_targets` | kvm_usable | degrade | — | No KVM: VM-class scenarios (kernel-level faults) cannot run on this host. |
-| `btrfs_pool` | btrfs_available | fallback | — | No btrfs: the Incus pool falls back to LVM thin provisioning. |
-| `lvm_thin_pool` | dm_thin_pool_available | degrade | btrfs_pool | No LVM thin provisioning. |
-| `dcgm_metrics` | environment_in: baremetal, vm, nvidia_driver_loaded | fallback | — | No DCGM: GPU metrics come from the nvidia-smi exporter. |
+| Feature | Requires | When missing | Impact |
+| --- | --- | --- | --- |
+| `gpu_inference` | nvidia_gpu_usable, gpu_vram_mib_min: 8000, gpu_compute_capability_min: 7.5, driver_cuda_min: 13.0.2 | degrade | No usable GPU: vLLM will not be installed; inference campaigns cannot run on this host. |
+| `gpu_training` | nvidia_gpu_usable, gpu_vram_mib_min: 8000, gpu_compute_capability_min: 7.0 | degrade | No usable GPU for training: no training job gets a GPU; with training: cpu the jobs' CPU-only variant runs. |
+| `vm_targets` | kvm_usable | degrade | No KVM: VM-class scenarios (kernel-level faults) cannot run on this host. |
+| `dcgm_metrics` | environment_in: baremetal, vm, nvidia_driver_loaded | fallback | No DCGM: GPU metrics come from the nvidia-smi exporter. |
 
 ## Provider rules
 
