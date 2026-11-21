@@ -1,0 +1,99 @@
+[
+ {
+  "name": "t1",
+  "project": "bench",
+  "type": "container",
+  "expanded_devices": {
+   "root": {
+    "type": "disk",
+    "path": "/",
+    "pool": "pinka-targets",
+    "size": "8GiB"
+   },
+   "eth0": {
+    "type": "nic"
+   }
+  }
+ },
+ {
+  "name": "vm1",
+  "project": "bench",
+  "type": "virtual-machine",
+  "expanded_devices": {
+   "root": {
+    "type": "disk",
+    "path": "/",
+    "pool": "pinka-targets",
+    "size": "16GiB",
+    "size.state": "500MiB"
+   },
+   "eth0": {
+    "type": "nic"
+   }
+  }
+ },
+ {
+  "name": "t3",
+  "project": "bench",
+  "type": "container",
+  "expanded_devices": {
+   "root": {
+    "type": "disk",
+    "path": "/",
+    "pool": "pinka-targets",
+    "size": "8GiB"
+   },
+   "eth0": {
+    "type": "nic"
+   }
+  }
+ },
+ {
+  "name": "b1",
+  "project": "build",
+  "type": "container",
+  "expanded_devices": {
+   "root": {
+    "type": "disk",
+    "path": "/",
+    "pool": "pinka-targets",
+    "size": "16GiB"
+   },
+   "eth0": {
+    "type": "nic"
+   }
+  }
+ },
+ {
+  "name": "c1",
+  "project": "user-1001",
+  "type": "container",
+  "expanded_devices": {
+   "root": {
+    "type": "disk",
+    "path": "/",
+    "pool": "pinka-targets",
+    "size": "4GiB"
+   },
+   "eth0": {
+    "type": "nic"
+   }
+  }
+ },
+ {
+  "name": "c2",
+  "project": "user-1001",
+  "type": "container",
+  "expanded_devices": {
+   "root": {
+    "type": "disk",
+    "path": "/",
+    "pool": "pinka-targets",
+    "size": "4GiB"
+   },
+   "eth0": {
+    "type": "nic"
+   }
+  }
+ }
+]

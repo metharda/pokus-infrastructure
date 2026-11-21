@@ -666,7 +666,7 @@ def test_a_gpu_no_driver_is_installed_for(repo: Paths) -> None:
 
 
 def test_unsupported_host_can_only_be_forced_by_typing(repo: Paths) -> None:
-    host = FakeHost(preflight("ubuntu2404-no-btrfs-no-dmthin"))
+    host = FakeHost(preflight("ubuntu2404-cgroup-v1"))
     installer = app(context(repo, host), first="preflight")
 
     async def flow(pilot: Pilot[int]) -> None:
@@ -765,7 +765,7 @@ UNINSTALL_OVERRIDES = (
     ("fixture", "args", "outcome", "held"),
     [
         (
-            "ubuntu2404-no-btrfs-no-dmthin",
+            "ubuntu2404-cgroup-v1",
             (),
             "unsupported",
             "this host is unsupported: Abort, or Force",
@@ -835,7 +835,7 @@ def test_uninstall_is_reached_without_force_or_a_consent(
 def test_a_forced_host_uninstalls_without_the_override(repo: Paths) -> None:
     # Forcing first changes nothing for an uninstall: the override is for an install.
     installed(repo)
-    host = FakeHost(preflight("ubuntu2404-no-btrfs-no-dmthin"), installed="pinka-lab")
+    host = FakeHost(preflight("ubuntu2404-cgroup-v1"), installed="pinka-lab")
     runner = FakeRunner([("events-success.jsonl", 0)])
     installer = app(context(repo, host, runner))
 
@@ -863,7 +863,7 @@ def test_the_held_reasons_go_once_the_preflight_screen_no_longer_holds(repo: Pat
     # Held on the way to Uninstall, then back, forced and on again: nothing holds an
     # install any more, and modify mode goes on.
     installed(repo)
-    host = FakeHost(preflight("ubuntu2404-no-btrfs-no-dmthin"), installed="pinka-lab")
+    host = FakeHost(preflight("ubuntu2404-cgroup-v1"), installed="pinka-lab")
     installer = app(context(repo, host))
 
     async def flow(pilot: Pilot[int]) -> None:
@@ -891,7 +891,7 @@ def test_a_resumed_wizard_still_holds_the_install(repo: Paths) -> None:
     # Quit on the Install mode screen while the Preflight screen holds an install: the
     # resumed wizard opens there and still offers only Uninstall.
     installed(repo)
-    host = FakeHost(preflight("ubuntu2404-no-btrfs-no-dmthin"), installed="pinka-lab")
+    host = FakeHost(preflight("ubuntu2404-cgroup-v1"), installed="pinka-lab")
     installer = app(context(repo, host))
 
     async def flow(pilot: Pilot[int]) -> None:
@@ -905,7 +905,7 @@ def test_a_resumed_wizard_still_holds_the_install(repo: Paths) -> None:
     saved = state.load(repo.state_file)
     assert saved is not None and saved.screen == "mode"
     assert saved.answers["install_held"] == ["this host is unsupported: Abort, or Force"]
-    host = FakeHost(preflight("ubuntu2404-no-btrfs-no-dmthin"), installed="pinka-lab")
+    host = FakeHost(preflight("ubuntu2404-cgroup-v1"), installed="pinka-lab")
     again = app(context(repo, host))
     found = notes(again)
 
@@ -925,7 +925,7 @@ def test_a_resumed_hold_without_a_lab_goes_back_to_the_preflight_screen(repo: Pa
     # A wizard resumed after the lab was removed outside the installer: Uninstall is not
     # offered, and the Preflight screen's checks never passed, so the only way on is
     # Back, where the Preflight screen judges the host again (here: still unsupported).
-    host = FakeHost(preflight("ubuntu2404-no-btrfs-no-dmthin"))  # nothing installed
+    host = FakeHost(preflight("ubuntu2404-cgroup-v1"))  # nothing installed
     ctx = context(repo, host, machine="pinka-lab")
     ctx.wizard.install_held = ["this host is unsupported: Abort, or Force"]
     installer = app(ctx, first="mode")
@@ -967,7 +967,7 @@ def test_a_supported_host_with_a_lab_holds_nothing(repo: Paths) -> None:
 def test_a_preflight_error_does_not_go_on_to_uninstall(repo: Paths) -> None:
     # Bootstrap's uninstall stops on a preflight error (exit 40) too: the screen holds.
     installed(repo)
-    profile = preflight("ubuntu2404-no-btrfs-no-dmthin").profile
+    profile = preflight("ubuntu2404-cgroup-v1").profile
     host = FakeHost(Preflight(40, profile), installed="pinka-lab")
     installer = app(context(repo, host))
     found = notes(installer)
@@ -982,7 +982,7 @@ def test_a_preflight_error_does_not_go_on_to_uninstall(repo: Paths) -> None:
 
 
 def test_an_unsupported_host_without_a_lab_still_needs_force(repo: Paths) -> None:
-    host = FakeHost(preflight("ubuntu2404-no-btrfs-no-dmthin"))  # nothing installed
+    host = FakeHost(preflight("ubuntu2404-cgroup-v1"))  # nothing installed
     installer = app(context(repo, host))
     found = notes(installer)
 

@@ -155,6 +155,9 @@ RESULTS = ("removed", "restored", "locked", "kept", "already_gone", "failed", "p
 # The item bootstrap finishes after the play (bootstrap/lib/stages.sh).
 PENDING_REASON = "bootstrap removes it after the play"
 COMPONENTS = ("docker", "incus", "tailscale", "nvidia")
+# The install record's key of the No_COW attribute pinka set on an existing
+# directory (the Incus loop pool's on btrfs): nocow:<path>, before "off".
+NOCOW = "nocow:"
 # The install record's key of a project's setting pinka changed:
 # incus:project:<project>:<key> (the server's: incus:config:<key>).
 INCUS_PROJECT_CONFIG = "incus:project:"
@@ -2142,6 +2145,18 @@ def plan_dropins(ctx: Context) -> list[Item]:  # noqa: PLR0912 - one kind of fil
                     value=before,
                 )
             )
+        elif key.startswith(NOCOW) and str(before) == "off":
+            path = key[len(NOCOW) :]
+            if host.exists(path):
+                items.append(
+                    item(
+                        "dropins",
+                        "nocow",
+                        path,
+                        "restore",
+                        "No_COW off again, as before pinka (files already in it keep theirs)",
+                    )
+                )
         elif key.startswith("sysctl:"):
             setting = key[len("sysctl:") :]
             items.append(
@@ -2296,6 +2311,17 @@ def plan_paths(ctx: Context) -> list[Item]:  # noqa: PLR0912 - one kind of path 
     for path in names["paths"]:
         if path != names["config_dir"] and host.exists(path):
             items.append(item("paths", "path", path, "remove", "pinka's path"))
+    for path in sorted(str(p) for p in ctx.added.get("paths") or []):
+        if host.exists(path):
+            items.append(
+                item(
+                    "paths",
+                    "created_dir",
+                    path,
+                    "remove",
+                    "a directory pinka created (the install record); removed only when empty",
+                )
+            )
     data = [
         (ctx.pinka_root, "the lab's data: the database files, models, datasets, images, backups")
     ]
@@ -3067,6 +3093,10 @@ def apply_setting(ctx: Context, it: Item) -> tuple[str, str]:  # noqa: PLR0911 -
         return result
     if kind == "sysctl":
         return outcome(host, ["sysctl", "-w", f"{it['key']}={it['value']}"], done="restored")
+    if kind == "nocow":
+        if not host.exists(it["name"]):
+            return "already_gone", ""
+        return outcome(host, ["chattr", "-C", it["name"]], done="restored")
     if kind == "selinux_fcontext":
         return outcome(host, ["semanage", "fcontext", "--delete", it["spec"]])
     if kind == "unit_state":
@@ -3111,6 +3141,17 @@ def apply_path(ctx: Context, it: Item) -> tuple[str, str]:
         parent = str(Path(path).parent)
         if host.is_empty_dir(parent):
             host.path(parent).rmdir()
+    return "removed", ""
+
+
+def apply_created_dir(ctx: Context, it: Item) -> tuple[str, str]:
+    """Remove a directory pinka created outside its paths, only when it is empty."""
+    host, path = ctx.host, it["name"]
+    if not host.exists(path):
+        return "already_gone", ""
+    if not host.is_empty_dir(path):
+        return "kept", "not empty: what is in it is not pinka's to remove"
+    host.path(path).rmdir()
     return "removed", ""
 
 
@@ -3354,9 +3395,18 @@ APPLIERS: dict[str, Callable[[Context, Item], tuple[str, str]]] = {
     "edited_line": apply_file,
     **{
         k: apply_setting
-        for k in ("timezone", "sysctl", "selinux_fcontext", "unit_state", "unmask", "initramfs")
+        for k in (
+            "timezone",
+            "sysctl",
+            "nocow",
+            "selinux_fcontext",
+            "unit_state",
+            "unmask",
+            "initramfs",
+        )
     },
     **{k: apply_path for k in ("path", "state_dir", "config", "data", "record", "tooling")},
+    "created_dir": apply_created_dir,
     "lab_root": apply_lab_root,
     "kept_accounts": apply_kept_accounts,
 }

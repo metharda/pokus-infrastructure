@@ -16,10 +16,10 @@ GPU
   -, - GiB, driver - (CUDA -), compute -, path native, usable no
   PCI 10de:2786, supported by the open kernel module of the pinned driver: 580.178.04
 Capabilities
-  cgroup2 yes, tun yes, KVM usable yes, btrfs yes, dm_thin_pool yes, Secure Boot enabled
-  MAC apparmor (enabled), firewall backend nftables, storage btrfs
+  cgroup2 yes, tun yes, KVM usable yes, dm_thin_pool yes, Secure Boot enabled
+  MAC apparmor (enabled), firewall backend nftables, storage lvm
 Features
-  gpu_inference off, gpu_training off, vm_targets on, btrfs_pool on, lvm_thin_pool on, dcgm_metrics off
+  gpu_inference off, gpu_training off, vm_targets on, dcgm_metrics off
 Access
   dedicated host, firewall manager none, install session: the console
 Requirements
@@ -38,13 +38,13 @@ Requirements
     serving (inference: auto): off: the NVIDIA driver is installed in this run: serving is judged once it is loaded, by the next bootstrap run
     training (training: auto): off: the NVIDIA driver is installed in this run: training on the GPU is judged once it is loaded, by the next bootstrap run
   CPU estimate 5.1 threads
-  Incus pool: loop file of 66 GiB (computed: golden images 3.7 GiB + 2 x (16.0 GiB target + 4.0 GiB probe client) root disks (the 16.0 GiB build instance is not larger) + 50% = 66 GiB; 339.1 GiB free on / after pinka's other needs there (10.9 GiB at install, 50.0 GiB kept beside the file))
-  disk / (ext4): 400.0 GiB free, 126.9 GiB needed at install
+  Incus pool: loop file of 181 GiB (computed: the bench project's limits.disk 41.0 GiB + the build project's limits.disk 33.0 GiB + the personal projects' limits.disk 60.0 GiB + the image volumes 24.0 GiB + the thin pool's metadata and its spare 2.0 GiB + LVM's own overhead 1.0 GiB + the headroom for the images no limit counts 20.0 GiB = 181 GiB)
+  disk / (ext4): 400.0 GiB free, 241.9 GiB needed at install
     pinka itself: 5.0 GiB (estimated)
     container images (11): 2.2 GiB (estimated)
     the free space kept beside the Incus pool (loop file): 50.0 GiB (estimated)
     golden images (Incus image store) (6): 3.7 GiB (estimated)
-    the Incus pool (loop file): 66.0 GiB (estimated)
+    the Incus pool (loop file): 181.0 GiB (estimated)
   disk /srv (ext4): 500.0 GiB free, 3.7 GiB needed at install
     golden images (export) (6): 3.7 GiB (estimated)
   growth on /srv: 0.27 GiB a day, 1.89 GiB a week; the disk does not fill within ten years, the retention's limits counted

@@ -105,7 +105,6 @@ Report written by pinka-preflight to /etc/pinka/host-profile.json. generated_at 
 | `capabilities.kvm_present` | boolean | yes | — |
 | `capabilities.kvm_usable` | boolean | yes | — |
 | `capabilities.kvm_nested` | boolean or null | yes | — |
-| `capabilities.btrfs` | boolean | yes | — |
 | `capabilities.dm_thin_pool` | boolean | yes | — |
 | `capabilities.secure_boot` | one of `enabled`, `disabled`, `not_efi`, `unknown` | yes | — |
 | `capabilities.nouveau_loaded` | boolean | yes | — |
@@ -165,11 +164,19 @@ Report written by pinka-preflight to /etc/pinka/host-profile.json. generated_at 
 | `requirements.growth.gib_per_week` | number | yes | — |
 | `requirements.growth.days_until_full` | integer or null | yes | The day the disk fills at this rate; null if nothing grows, if the free space is not measured, or if the stores, with the retention's limits counted, stay below the free space for ten years. |
 | `requirements.growth.items` | array | yes | — |
-| `requirements.pool` | object or null | yes | The Incus pool's size: a loop file of incus_pool_size, or computed for auto (the golden images and the concurrent targets' root disks with a margin, limited by the free space where the loop file goes); null on an inference node. |
+| `requirements.pool` | object or null | yes | The Incus pool: its required size, the sum of everything that may be written to it (the projects' disk limits, the image volumes, the thin pool's metadata, LVM's overhead and a headroom), and its size: the loop file of incus_pool_size, or that sum for auto; null on an inference node. |
 | `requirements.pool.source` | one of `loop`, `device` | yes | — |
 | `requirements.pool.size_gib` | number or null | yes | — |
 | `requirements.pool.basis` | one of `computed`, `configured` | yes | — |
 | `requirements.pool.detail` | string | yes | — |
+| `requirements.pool.required_gib` | integer | yes | The sum of the parts, rounded up to whole GiB. |
+| `requirements.pool.volume_size_gib` | number | yes | The pool's volume.size, the size of every image volume. |
+| `requirements.pool.parts` | array | yes | — |
+| `requirements.pool.parts[].id` | one of `bench`, `build`, `personal`, `images`, `metadata`, `lvm`, `headroom` | yes | — |
+| `requirements.pool.parts[].title` | string | yes | — |
+| `requirements.pool.parts[].size_gib` | number | yes | — |
+| `requirements.pool.parts[].detail` | string | yes | — |
+| `requirements.pool.parts[].basis` | one of `configured`, `estimated`, `measured` | yes | — |
 | `requirements.budgets` | object | yes | One status per resource, with what is needed, what there is and the shortfall: memory, the disk per mount point and the GPU's memory (VRAM). |
 | `requirements.budgets.memory` | object | yes | Memory: does_not_fit below the required value (unsupported), degraded below the recommended value (consent), unknown when MemTotal could not be read. |
 | `requirements.budgets.memory.status` | one of `fits`, `degraded`, `does_not_fit`, `unknown` | yes | The memory's status. |
@@ -201,15 +208,13 @@ Report written by pinka-preflight to /etc/pinka/host-profile.json. generated_at 
 | `features.gpu_inference` | boolean | yes | — |
 | `features.gpu_training` | boolean | yes | — |
 | `features.vm_targets` | boolean | yes | — |
-| `features.btrfs_pool` | boolean | yes | — |
-| `features.lvm_thin_pool` | boolean | yes | — |
 | `features.dcgm_metrics` | boolean | yes | — |
 | `disabled_features` | array | yes | Features whose absence makes the host degraded, with their research impact. |
 | `disabled_features[].feature` | string | yes | — |
 | `disabled_features[].impact` | string | yes | — |
 | `disabled_features[].unmet` | string | yes | — |
 | `disabled_features[].remediation` | string | no | What makes the feature available, when the matrix names it (for example the driver update of gpu_inference). |
-| `storage_backend` | one of `btrfs`, `lvm`, `null` | yes | Backend for the Incus pool; null means no quota-capable storage. |
+| `storage_backend` | one of `lvm`, `null` | yes | Driver of the Incus pool: lvm (LVM thin, the only driver); null when dm_thin_pool is missing (the outcome is then needs_action) or on an inference node, which runs no Incus. |
 | `components` | object | yes | Components that may exist before pinka, with their origin from the install record (/var/lib/pinka/install-record.json) or, without one, from pinka's marks. |
 | `components.install_record` | boolean | yes | The host has an install record. |
 | `components.docker` | object | yes | — |

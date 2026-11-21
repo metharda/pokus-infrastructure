@@ -10,6 +10,8 @@ fail() {
 
 systemctl is-active --quiet docker.service || fail "Docker is not running"
 docker info >/dev/null 2>&1 || fail "docker info fails (nesting?)"
+driver=$(docker info --format '{{.Driver}}')
+[ "$driver" = overlay2 ] || fail "Docker's storage driver is $driver, not overlay2"
 systemctl is-active --quiet web-container.service || fail "the web service is not running"
 tries=0
 until curl -fsS http://127.0.0.1:8080/ >/dev/null 2>&1; do

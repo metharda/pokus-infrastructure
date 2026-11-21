@@ -51,7 +51,7 @@ At least 8 GiB of memory, more as the choices require (features, node role, conc
 ## Prerequisites
 
 - A machine with one of the environments above, systemd as PID 1, cgroup v2,
-  and btrfs or LVM thin provisioning for the target storage pool (preflight
+  and LVM thin provisioning (`dm_thin_pool`) for the target storage pool (preflight
   checks all of it: `./preflight/pinka-preflight --no-write`).
 - `git` and `sudo`; bootstrap installs its own pinned Python and Ansible.
 - A Tailscale account for the lab's remote access and the researchers' SSH

@@ -222,6 +222,7 @@ def _configuration(system: System, config: LabConfig) -> dict[str, Any]:
         "infra_dirty": state.get("infra_dirty"),
         "versions_lock_sha256": config.get("fingerprint", "versions_lock_sha256"),
         "host_vars_sha256": config.get("fingerprint", "host_vars_sha256"),
+        "incus_pool_driver": config.get("incus", "backend") if config.runs_lab else None,
         "platform": _platform(
             system,
             str(config.get("paths", "active_platform", default="/etc/pinka/platform/active.json")),

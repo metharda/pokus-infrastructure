@@ -2373,3 +2373,57 @@ class ReportTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LoopPoolDirectoryTest(unittest.TestCase):
+    """The Incus loop pool's directory on btrfs: No_COW set back, a created one removed if empty."""
+
+    DISKS = "/var/lib/incus/disks"
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.fake = FakeHost(Path(self._tmp.name))
+        full_install(self.fake)
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def with_record(self, **added: Any) -> None:
+        self.fake.file("var/lib/pinka/install-record.json", json.dumps(record(**added)), 0o600)
+        (self.fake.root / self.DISKS.lstrip("/")).mkdir(parents=True, exist_ok=True)
+
+    def run_phase(self, phase: str) -> dict[str, dict[str, Any]]:
+        p = params(self.fake)
+        mod.run_module(p, run=self.fake.run)
+        result = mod.run_module({**p, "state": "apply", "phase": phase}, run=self.fake.run)
+        return {r["name"]: r for r in result["results"]}
+
+    def test_no_cow_set_on_an_existing_directory_is_set_back(self) -> None:
+        self.with_record(changed={f"nocow:{self.DISKS}": "off"})
+        nocow = named(plan_of(self.fake), "nocow")
+        self.assertEqual(set(nocow), {self.DISKS})
+        self.assertEqual(nocow[self.DISKS]["action"], "restore")
+        self.fake.answer("chattr", rc=0)
+        results = self.run_phase("dropins")
+        self.assertEqual(results[self.DISKS]["result"], "restored")
+        self.assertIn(["chattr", "-C", self.DISKS], self.fake.calls)
+
+    def test_no_cow_it_had_before_stays(self) -> None:
+        self.with_record(changed={f"nocow:{self.DISKS}": "on"})
+        self.assertEqual(named(plan_of(self.fake), "nocow"), {})
+
+    def test_a_directory_pinka_created_goes_only_when_empty(self) -> None:
+        self.with_record(paths=[self.DISKS])
+        created = named(plan_of(self.fake), "created_dir")
+        self.assertEqual(created[self.DISKS]["phase"], "paths")
+        disks = self.fake.root / self.DISKS.lstrip("/")
+        (disks / "pinka-targets.img").write_text("kept pool")
+        results = self.run_phase("paths")
+        self.assertEqual(results[self.DISKS]["result"], "kept")
+        self.assertTrue((disks / "pinka-targets.img").exists())
+        # The records went at the end of that phase; the item itself, again:
+        (disks / "pinka-targets.img").unlink()
+        ctx = mod.Context(make_host(self.fake), params(self.fake))
+        self.assertEqual(mod.apply_created_dir(ctx, created[self.DISKS]), ("removed", ""))
+        self.assertFalse(disks.exists())
+        self.assertEqual(mod.apply_created_dir(ctx, created[self.DISKS]), ("already_gone", ""))

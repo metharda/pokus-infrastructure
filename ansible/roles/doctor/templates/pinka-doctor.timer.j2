@@ -1,0 +1,16 @@
+# Managed by pinka (ansible/roles/doctor/templates/pinka-doctor.timer.j2). Local changes will be overwritten.
+#
+# Doctor's periodic run: the Incus pool's checks bound the images no limit
+# counts, so they run without anyone starting them. Persistent=true runs a
+# missed run after boot; the interval divides the hour or the day, so
+# OnCalendar is exact.
+[Unit]
+Description=pinka doctor, periodic run (timer)
+
+[Timer]
+OnCalendar={{ doctor_periodic_calendar }}
+AccuracySec=1s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

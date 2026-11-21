@@ -17,7 +17,7 @@ machine:
   srv_path: /srv/pinka
 storage:
   source: loop
-  loop_size_gib: 30
+  loop_size_gib: auto
 researchers:
   - {name: researcher1, display_name: Researcher One, admin: true, grafana: true}
 remote_access:

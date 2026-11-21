@@ -1,0 +1,13 @@
+{
+ "name": "pinka-targets",
+ "driver": "lvm",
+ "config": {
+  "size": "180GiB",
+  "lvm.use_thinpool": "true",
+  "lvm.thinpool_metadata_size": "1GiB",
+  "volume.size": "3GiB",
+  "lvm.vg_name": "pinka-targets",
+  "lvm.thinpool_name": "IncusThinPool",
+  "source": "/var/lib/incus/disks/pinka-targets.img"
+ }
+}

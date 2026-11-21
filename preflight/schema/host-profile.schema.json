@@ -609,7 +609,6 @@
         "kvm_present",
         "kvm_usable",
         "kvm_nested",
-        "btrfs",
         "dm_thin_pool",
         "secure_boot",
         "nouveau_loaded"
@@ -661,9 +660,6 @@
             "boolean",
             "null"
           ]
-        },
-        "btrfs": {
-          "type": "boolean"
         },
         "dm_thin_pool": {
           "type": "boolean"
@@ -1091,9 +1087,12 @@
             "source",
             "size_gib",
             "basis",
-            "detail"
+            "detail",
+            "required_gib",
+            "volume_size_gib",
+            "parts"
           ],
-          "description": "The Incus pool's size: a loop file of incus_pool_size, or computed for auto (the golden images and the concurrent targets' root disks with a margin, limited by the free space where the loop file goes); null on an inference node.",
+          "description": "The Incus pool: its required size, the sum of everything that may be written to it (the projects' disk limits, the image volumes, the thin pool's metadata, LVM's overhead and a headroom), and its size: the loop file of incus_pool_size, or that sum for auto; null on an inference node.",
           "properties": {
             "source": {
               "enum": [
@@ -1116,6 +1115,60 @@
             },
             "detail": {
               "type": "string"
+            },
+            "required_gib": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "The sum of the parts, rounded up to whole GiB."
+            },
+            "volume_size_gib": {
+              "type": "number",
+              "description": "The pool's volume.size, the size of every image volume.",
+              "minimum": 1
+            },
+            "parts": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "title",
+                  "basis",
+                  "size_gib",
+                  "detail"
+                ],
+                "properties": {
+                  "id": {
+                    "enum": [
+                      "bench",
+                      "build",
+                      "personal",
+                      "images",
+                      "metadata",
+                      "lvm",
+                      "headroom"
+                    ]
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "size_gib": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "detail": {
+                    "type": "string"
+                  },
+                  "basis": {
+                    "enum": [
+                      "configured",
+                      "estimated",
+                      "measured"
+                    ]
+                  }
+                }
+              }
             }
           }
         },
@@ -1362,8 +1415,6 @@
         "gpu_inference",
         "gpu_training",
         "vm_targets",
-        "btrfs_pool",
-        "lvm_thin_pool",
         "dcgm_metrics"
       ],
       "properties": {
@@ -1374,12 +1425,6 @@
           "type": "boolean"
         },
         "vm_targets": {
-          "type": "boolean"
-        },
-        "btrfs_pool": {
-          "type": "boolean"
-        },
-        "lvm_thin_pool": {
           "type": "boolean"
         },
         "dcgm_metrics": {
@@ -1416,9 +1461,8 @@
       }
     },
     "storage_backend": {
-      "description": "Backend for the Incus pool; null means no quota-capable storage.",
+      "description": "Driver of the Incus pool: lvm (LVM thin, the only driver); null when dm_thin_pool is missing (the outcome is then needs_action) or on an inference node, which runs no Incus.",
       "enum": [
-        "btrfs",
         "lvm",
         null
       ]

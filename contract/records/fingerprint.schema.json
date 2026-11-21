@@ -199,6 +199,7 @@
             "infra_dirty",
             "versions_lock_sha256",
             "host_vars_sha256",
+            "incus_pool_driver",
             "platform"
           ],
           "properties": {
@@ -207,6 +208,7 @@
             "infra_dirty": {"description": "Whether the repository had uncommitted changes.", "type": ["boolean", "null"]},
             "versions_lock_sha256": {"description": "sha256 of `versions.lock.yml`.", "type": ["string", "null"]},
             "host_vars_sha256": {"description": "sha256 of the host_vars file.", "type": ["string", "null"]},
+            "incus_pool_driver": {"description": "The Incus pool's driver (the host profile's `storage_backend`): `lvm` on a lab node, null where no Incus runs.", "enum": ["lvm", null]},
             "platform": {"description": "The active platform.", "$ref": "#/$defs/platform"}
           }
         },

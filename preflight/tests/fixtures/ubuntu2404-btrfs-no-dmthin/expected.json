@@ -1,0 +1,10 @@
+{
+  "needs_action": [
+    "lvm_thin_pool"
+  ],
+  "needs_action_contains": [
+    "linux-modules-$(uname -r)"
+  ],
+  "outcome": "needs_action",
+  "storage_backend": null
+}

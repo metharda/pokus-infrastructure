@@ -456,6 +456,7 @@ def test_tool_settings_for_https_and_bootstrap_options() -> None:
         "scripted_api_url": "",
         "vm_collector_address": "198.18.0.1",
         "cpuset_targets": "",
+        "incus_disk": {},  # the incus role's budget.yml sets incus_disk_budget
         "training_caps": evaluate("pinka_training_caps", scope),
     }
     assert settings["vault_keys"] == []

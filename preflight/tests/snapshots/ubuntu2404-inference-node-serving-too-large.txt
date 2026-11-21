@@ -16,10 +16,10 @@ GPU
   NVIDIA GeForce RTX 4060 Ti, 8.0 GiB, driver 580.82.07 (CUDA 13.0), compute 8.9, path native, usable yes
   PCI 10de:2803, supported by the open kernel module of the pinned driver: 580.178.04
 Capabilities
-  cgroup2 yes, tun yes, KVM usable yes, btrfs yes, dm_thin_pool yes, Secure Boot disabled
-  MAC apparmor (enabled), firewall backend nftables, storage btrfs
+  cgroup2 yes, tun yes, KVM usable yes, dm_thin_pool yes, Secure Boot disabled
+  MAC apparmor (enabled), firewall backend nftables, storage -
 Features
-  gpu_inference on, gpu_training on, vm_targets on, btrfs_pool on, lvm_thin_pool on, dcgm_metrics on
+  gpu_inference on, gpu_training on, vm_targets on, dcgm_metrics on
 Access
   dedicated host, firewall manager none, install session: the console
 Requirements

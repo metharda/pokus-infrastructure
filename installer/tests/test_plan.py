@@ -57,6 +57,8 @@ def test_the_installers_capacity_defaults_are_ansibles() -> None:
         "docker_data_root",
         "pool",
         "concurrent_targets",
+        "researchers",
+        "personal_disk_gib",
     ):
         assert written[key] == DEFAULTS[key], key
     assert written["training"] == DEFAULTS["training"]
@@ -71,7 +73,11 @@ def test_settings_become_the_plan() -> None:
         docker_data_root="/data/docker",
         incus_pool_source="device",
         incus_pool_size="500GiB",
+        incus_pool_device="/dev/disk/by-id/example-disk",
+        incus_pool_volume_size="4GiB",
         incus_concurrent_targets=4,
+        researchers=[{"name": "researcher1"}],
+        incus_user_limits={"limits.instances": "5", "limits.disk": "30GiB"},
         images_blueprints=["base"],
         observability_gpu_exporter="dcgm",
         training_caps={"memory_max": "12G", "run_storage_max": "512M"},
@@ -83,7 +89,13 @@ def test_settings_become_the_plan() -> None:
     )
     assert found["node_role"] == "lab"
     assert (found["srv_path"], found["docker_data_root"]) == ("/data/pinka", "/data/docker")
-    assert found["pool"] == {"source": "device", "size_gib": 500.0}
+    assert found["pool"] == {
+        "source": "device",
+        "size_gib": 500.0,
+        "volume_size_gib": 4.0,
+        "device": "/dev/disk/by-id/example-disk",
+    }
+    assert (found["researchers"], found["personal_disk_gib"]) == (1, 30.0)
     assert (found["concurrent_targets"], found["images"]) == (4, ["base"])
     assert found["gpu_exporter"] == "dcgm"
     assert found["training"] == {"mode": "auto", "memory_max_gib": 12.0, "run_storage_max_gib": 0.5}

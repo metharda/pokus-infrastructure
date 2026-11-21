@@ -5,8 +5,10 @@ Preflight computes what the operator's choices need from a plan
 ``preflight/requirements.json`` carries the configured defaults, the Ansible
 defaults compiled by ``make generate``; the plan overlays what
 ``group_vars/all/main.yml`` and the machine's ``host_vars`` set, as Ansible
-reads them (host_vars win, a top-level key replaces the whole value), and the
-selected model's files from ``models.lock.yml``. Bootstrap writes it before
+reads them (host_vars win, a top-level key replaces the whole value, except
+the incus role's limits and sizes mappings, which the role merges key by key
+with their defaults and so does the plan), and the selected model's files
+from ``models.lock.yml``. Bootstrap writes it before
 preflight runs and passes the same file to the play.
 """
 
@@ -91,14 +93,7 @@ def plan(  # noqa: PLR0912 - one branch per setting
     for name, key in (("pinka_root", "srv_path"), ("docker_data_root", "docker_data_root")):
         if name in variables:
             result[key] = _checked(name, variables[name], validators.absolute_path)
-    if "incus_pool_source" in variables:
-        source = _plain("incus_pool_source", variables["incus_pool_source"])
-        if source not in ("loop", "device"):
-            raise PlanError(f"incus_pool_source must be loop or device (got {source!r})")
-        result["pool"]["source"] = source
-    if "incus_pool_size" in variables:
-        size = _checked("incus_pool_size", variables["incus_pool_size"], validators.pool_size)
-        result["pool"]["size_gib"] = None if size == "auto" else validators.size_bytes(size) / GIB
+    _lab(result, variables)
     if "incus_concurrent_targets" in variables:
         count = variables["incus_concurrent_targets"]
         problem = (
@@ -134,6 +129,92 @@ def plan(  # noqa: PLR0912 - one branch per setting
             result["training"]["run_storage_max_gib"] = validators.cap_size_gib(value)
     _retention(result["retention"], variables)
     return result
+
+
+def _lab(result: dict[str, Any], variables: Mapping[str, Any]) -> None:
+    """The Incus pool, the researchers and their personal limit into ``result``."""
+    if "incus_pool_source" in variables:
+        source = _plain("incus_pool_source", variables["incus_pool_source"])
+        if source not in ("loop", "device"):
+            raise PlanError(f"incus_pool_source must be loop or device (got {source!r})")
+        result["pool"]["source"] = source
+    if "incus_pool_size" in variables:
+        size = _checked("incus_pool_size", variables["incus_pool_size"], validators.pool_size)
+        result["pool"]["size_gib"] = None if size == "auto" else validators.size_bytes(size) / GIB
+    if "incus_pool_device" in variables:
+        result["pool"]["device"] = _plain("incus_pool_device", variables["incus_pool_device"])
+    if "incus_pool_volume_size" in variables:
+        size = _checked(
+            "incus_pool_volume_size", variables["incus_pool_volume_size"], validators.pool_size
+        )
+        result["pool"]["volume_size_gib"] = (
+            None if size == "auto" else validators.size_bytes(size) / GIB
+        )
+    if "researchers" in variables:
+        people = variables["researchers"]
+        if not isinstance(people, list):
+            raise PlanError("researchers must be a list")
+        result["researchers"] = len(people)
+    _incus_disk(result, variables)
+
+
+# The incus role's sizes mappings the pool's sum reads: (variable, key, plan key).
+PROFILE_SIZES = (
+    ("incus_target_vm", "root_size", "target_vm_root_gib"),
+    ("incus_target_vm", "size_state", "target_vm_state_gib"),
+    ("incus_target_container", "root_size", "target_container_root_gib"),
+    ("incus_probe_client", "root_size", "probe_client_root_gib"),
+    ("incus_build_instance", "root_size", "build_root_gib"),
+    ("incus_build_instance", "size_state", "build_state_gib"),
+)
+# The projects' limits mappings whose limits.disk counts in the pool's sum,
+# with the plan key it sets (None: personal_disk_gib, outside incus_disk).
+PROJECT_LIMITS: tuple[tuple[str, str | None], ...] = (
+    ("incus_bench_limits", "bench_limits_disk_gib"),
+    ("incus_build_limits", "build_limits_disk_gib"),
+    ("incus_user_limits", None),
+)
+
+
+def _mapping(name: str, variables: Mapping[str, Any]) -> Mapping[str, Any]:
+    """A limits or sizes mapping of host_vars: only the keys it sets."""
+    value = variables.get(name)
+    if value is None:
+        return {}
+    if not isinstance(value, Mapping):
+        raise PlanError(f"{name} must be a mapping of the keys it changes (got {value!r})")
+    return value
+
+
+def _incus_disk(result: dict[str, Any], variables: Mapping[str, Any]) -> None:
+    """The sizes the pool's sum reads, merged key by key as the incus role does.
+
+    A key host_vars sets replaces the default; the others keep it. A
+    limits.disk set to null or empty is refused: every project's limit
+    counts in the pool's size.
+    """
+    sizes = result["incus_disk"]
+    for name, key, plan_key in PROFILE_SIZES:
+        mapping = _mapping(name, variables)
+        if key in mapping:
+            text = _checked(f"{name}.{key}", mapping[key], validators.size)
+            sizes[plan_key] = validators.size_bytes(text) / GIB
+    for name, limit_key in PROJECT_LIMITS:
+        mapping = _mapping(name, variables)
+        if "limits.disk" not in mapping:
+            continue
+        value = mapping["limits.disk"]
+        if value is None or not str(value).strip():
+            raise PlanError(
+                f"{name}: limits.disk is null or empty; the Incus pool's size counts every "
+                "project's limits.disk, so set a size or leave the key out to take the default"
+            )
+        text = _checked(f"{name}.limits.disk", value, validators.size)
+        gib = validators.size_bytes(text) / GIB
+        if limit_key is None:
+            result["personal_disk_gib"] = gib
+        else:
+            sizes[limit_key] = gib
 
 
 def _switches(result: dict[str, Any], variables: Mapping[str, Any]) -> None:

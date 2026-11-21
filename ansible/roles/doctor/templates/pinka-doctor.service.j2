@@ -1,0 +1,18 @@
+# Managed by pinka (ansible/roles/doctor/templates/pinka-doctor.service.j2). Local changes will be overwritten.
+#
+# Doctor's periodic run, started by pinka-doctor.timer: the Incus pool's
+# checks and the free space per mount point, its report in
+# {{ doctor_periodic_report }}. It runs after Incus without starting it (an
+# operator who stopped Incus keeps it stopped). Doctor's exit codes 1 and 2
+# are results, logged with the report; 3 (an internal error) fails the unit.
+[Unit]
+Description=pinka doctor, periodic run
+After=incus.service
+
+[Service]
+Slice={{ pinka_services_slice }}
+Type=oneshot
+ExecStart=/usr/local/bin/pinka doctor --only {{ doctor_periodic_checks | join(',') }} --report {{ doctor_periodic_report }}
+SuccessExitStatus=1 2
+Nice=10
+IOSchedulingClass=idle

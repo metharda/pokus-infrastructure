@@ -9,7 +9,6 @@ base_package_names:
   jq: jq
   git: git
   acl: acl
-  btrfs_tools: btrfsprogs
   lvm2: lvm2
   thin_provisioning_tools: thin-provisioning-tools
   nftables: nftables

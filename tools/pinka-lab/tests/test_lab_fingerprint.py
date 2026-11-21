@@ -307,6 +307,14 @@ class ComputeTest(unittest.TestCase):
         other = fingerprint.compute(host(), lab(fingerprint__host_vars_sha256="2" * 64))["hash"]
         self.assertNotEqual(base, other)
 
+    def test_the_pool_driver_is_hashed(self) -> None:
+        lab_node = fingerprint.compute(host(), lab())
+        self.assertEqual(lab_node["fingerprint"]["config"]["incus_pool_driver"], "lvm")
+        inference = fingerprint.compute(host(), lab(node_role="inference"))
+        self.assertIsNone(inference["fingerprint"]["config"]["incus_pool_driver"])
+        other = fingerprint.compute(host(), lab(incus__backend="other"))["hash"]
+        self.assertNotEqual(lab_node["hash"], other)
+
     def test_wsl(self) -> None:
         profile = dict(PROFILE, provider="wsl2")
         system = host(

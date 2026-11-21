@@ -420,8 +420,28 @@ def plan_defaults(root: Path) -> dict[str, Any]:
                 if str(incus["incus_pool_size"]) == "auto"
                 else size_gib(incus["incus_pool_size"])
             ),
+            "volume_size_gib": (
+                None
+                if str(incus["incus_pool_volume_size"]) == "auto"
+                else size_gib(incus["incus_pool_volume_size"])
+            ),
+            "device": str(incus["incus_pool_device"]),
         },
         "concurrent_targets": int(incus["incus_concurrent_targets"]),
+        "researchers": len(group_vars["researchers"]),
+        "personal_disk_gib": size_gib(incus["incus_user_limits_defaults"]["limits.disk"]),
+        "incus_disk": {
+            "target_vm_root_gib": size_gib(incus["incus_target_vm_defaults"]["root_size"]),
+            "target_vm_state_gib": size_gib(incus["incus_target_vm_defaults"]["size_state"]),
+            "target_container_root_gib": size_gib(
+                incus["incus_target_container_defaults"]["root_size"]
+            ),
+            "probe_client_root_gib": size_gib(incus["incus_probe_client_defaults"]["root_size"]),
+            "build_root_gib": size_gib(incus["incus_build_instance_defaults"]["root_size"]),
+            "build_state_gib": size_gib(incus["incus_build_instance_defaults"]["size_state"]),
+            "bench_limits_disk_gib": None,
+            "build_limits_disk_gib": None,
+        },
         "model": None,
         "vllm_profile": str(vllm["vllm_profile"]),
         "images": [str(name) for name in images["images_blueprints"]],
@@ -525,13 +545,14 @@ def requirements_json(root: Path) -> str:
         blueprint = load_yaml(path)
         blueprints[str(blueprint["name"])] = {
             "version": str(blueprint["version"]),
+            "type": str(blueprint["type"]),
             "estimated_size_gib": float(blueprint["estimated_size_gib"]),
         }
     data["blueprints"] = blueprints
     incus = load_yaml(root / "ansible/roles/incus/defaults/main.yml")
     data["disk"]["pool_file"] = f"{data['disk']['incus_dir']}/disks/{incus['incus_pool_name']}.img"
     data["target_memory_gib"] = {
-        name: size_gib(incus[f"incus_{key}"]["memory"])
+        name: size_gib(incus[f"incus_{key}_defaults"]["memory"])
         for name, key in (
             ("container", "target_container"),
             ("vm", "target_vm"),
@@ -540,7 +561,7 @@ def requirements_json(root: Path) -> str:
         )
     }
     data["target_root_gib"] = {
-        name: size_gib(incus[f"incus_{key}"]["root_size"])
+        name: size_gib(incus[f"incus_{key}_defaults"]["root_size"])
         for name, key in (
             ("container", "target_container"),
             ("vm", "target_vm"),
@@ -548,6 +569,10 @@ def requirements_json(root: Path) -> str:
             ("build", "build_instance"),
         )
     }
+    data["target_root_gib"]["vm_state"] = size_gib(incus["incus_target_vm_defaults"]["size_state"])
+    data["target_root_gib"]["build_state"] = size_gib(
+        incus["incus_build_instance_defaults"]["size_state"]
+    )
     data["serving"] = serving_data(root)
     data["defaults"] = plan_defaults(root)
     return dump_json(

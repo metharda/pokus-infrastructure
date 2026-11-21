@@ -2,8 +2,10 @@
 
 # Largest clock offset doctor accepts, in seconds.
 doctor_max_clock_offset: 1.0
-# Free space of the Incus pool below which doctor warns, in GiB.
-doctor_min_pool_free_gib: 20
+# Minutes between doctor's periodic runs (pinka-doctor.timer): one of 5, 10,
+# 15, 20, 30, 60, 120, 180, 240, 360, 480, 720 or 1440, so the timer is exact;
+# doctor.periodic warns when the last run is older than twice it.
+doctor_periodic_interval_minutes: 60
 # Free space per mount point the lab uses: warn below this
 # share, or when the trend of the recorded runs fills it within these days.
 doctor_disk_warn_free_percent: 15

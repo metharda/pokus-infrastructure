@@ -23,6 +23,17 @@ session record of every boot calls `pinka fingerprint` and
   fingerprint. pinka never reads the repository or the vault.
 - `/var/lib/pinka/fingerprint/` (0755): the fingerprint cache written by root
   (`current.json`, 0644), which other users read (contracts.md C9c).
+- `pinka-doctor.timer` and `pinka-doctor.service`: doctor's periodic run,
+  every `doctor_periodic_interval_minutes` (60 by default), of the Incus
+  pool's checks (lab nodes) and `disk.free_space`, after Incus without
+  starting it; the report in `/var/lib/pinka/doctor/last.json` (0600 root,
+  in a 0700 directory, replaced atomically), each warning and failure in the
+  journal. The role runs the service once when its units change or the report
+  is missing, so bootstrap's doctor stage always finds one (a failed run does
+  not stop the play: the doctor stage reports doctor's outcome);
+  `doctor.periodic` warns when it is older than twice the interval.
+  `/var/lib/pinka/doctor/` also holds the disk history of `disk.free_space`
+  (kept for 7 days).
 - `/usr/local/share/pinka/docs/` (0755, empty): where an operator extracts the
   documentation tarball of a release for `pinka docs serve`, which serves
   it on `127.0.0.1` (port `pinka_ports.docs_serve`; both in `lab.json`).

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import copy
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -108,6 +108,28 @@ def cpu_bar(services: str, targets: str, threads: int) -> str:
         in_s, in_t = validators.in_cpuset(cpu, s), validators.in_cpuset(cpu, t)
         cells.append("X" if in_s and in_t else "S" if in_s else "T" if in_t else "·")
     return "".join(cells)
+
+
+def pool_text(backend: str, pool: Mapping[str, Any]) -> str:
+    """The Incus pool's line: its backend, and its required size with its parts.
+
+    Args:
+        backend: The backend's name for the operator.
+        pool: The ``requirements.pool`` preflight computed (empty before it ran).
+
+    Returns:
+        The line.
+    """
+    parts = pool.get("parts") or []
+    if "required_gib" not in pool or not parts:
+        return f"Incus pool: {backend} (from preflight)"
+    terms = " + ".join(
+        f"{p['id']} {p['size_gib']:g} ({p.get('basis', 'estimated')})" for p in parts
+    )
+    return (
+        f"Incus pool: {backend}, {pool['required_gib']} GiB required ({terms}, in GiB; "
+        f"image volumes of {pool['volume_size_gib']:g} GiB)"
+    )
 
 
 class Section(Vertical):
@@ -218,8 +240,11 @@ class CapacityScreen(StepScreen):
         "A model must be pinned before the plan can count it: until then the plan is "
         "refused. Pin model resolves the commit and the sha256 of every file from the "
         "Hugging Face Hub; gated models need a token, to pin them and to download them.\n\n"
-        "The sandbox targets live in an Incus storage pool on btrfs, or on LVM thin when "
-        "btrfs is missing. A loop file is the simple choice; a dedicated disk is faster "
+        "The sandbox targets live in an Incus storage pool on LVM thin. Its size is the sum "
+        "of everything that may be written to it: the projects' disk limits (the targets, "
+        "two builds, each researcher's personal project), the image volumes, the thin "
+        "pool's metadata and a headroom for images no limit counts. A loop file is the "
+        "simple choice (it takes its full size at install); a dedicated disk is faster "
         "and is chosen on the next page.\n\n"
         "Lab services and Incus targets never share CPU cores, so measurements of the "
         "targets are not disturbed by the lab itself. The suggestion gives about 30 % of "
@@ -377,8 +402,11 @@ class CapacityScreen(StepScreen):
 
     def _storage(self) -> ComposeResult:
         storage = self.answers.storage
-        backend = self.wizard.storage_backend or "unknown"
-        yield Static(f"Incus pool: {backend} (from preflight)", classes="info")
+        backend = "LVM thin" if self.wizard.storage_backend == "lvm" else "unknown"
+        requirements = (self.wizard.capacity or self.wizard.profile).get("requirements") or {}
+        yield Static(
+            pool_text(backend, requirements.get("pool") or {}), classes="info", id="pool-line"
+        )
         with RadioSet(id="source"):
             yield RadioButton(
                 "Loop file inside this system", value=storage.source == "loop", id="source-loop"
@@ -391,7 +419,7 @@ class CapacityScreen(StepScreen):
         yield Field(
             "Loop file size (GiB, or auto)",
             Input(str(storage.loop_size_gib), id="loop_size"),
-            hint="auto: preflight sizes it from the targets, the golden images and the free space",
+            hint="auto: the sum above; an explicit size must hold it",
         )
         yield Field(
             "Concurrent targets",

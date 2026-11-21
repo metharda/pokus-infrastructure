@@ -111,6 +111,10 @@ def plan_for(paths: Paths, answers: Answers, lock_text: str) -> dict[str, Any]:
     )
     example = paths.example_host_vars.read_text(encoding="utf-8")
     variables = safe.load(hostvars.render(answers, current, example)) or {}
+    if answers.researchers:
+        # The researchers go to group_vars when the files are written; each has a
+        # personal project, which the Incus pool's size counts.
+        variables["researchers"] = [{"name": r.name} for r in answers.researchers]
     return plan_mod.plan_of(paths, variables, safe.load(lock_text) or {})
 
 

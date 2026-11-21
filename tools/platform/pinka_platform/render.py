@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from pinka_platform import layout, names, toml
@@ -110,6 +110,12 @@ def principals_json(document: Mapping[str, Any]) -> str:
     )
 
 
+# The disk budget of endpoints.toml's [incus] section, in bytes: the bench and
+# build projects' limits.disk (build's is shared with infra's own golden image
+# builds) and the Incus pool's volume.size, the largest image volume.
+INCUS_DISK = ("bench_limits_disk", "build_limits_disk", "pool_volume_size")
+
+
 @dataclass(frozen=True)
 class LabFacts:
     """The host settings the endpoints file reports.
@@ -123,6 +129,9 @@ class LabFacts:
         scripted_api_url: The OpenAI-compatible endpoint for ``scripted``.
         vm_collector_address: Address of the collector listener for VM targets.
         cpuset_targets: CPUs of the target instances, when set.
+        incus_disk: The disk budget in bytes, by the keys of ``INCUS_DISK``:
+            the bench and build projects' ``limits.disk`` and the Incus
+            pool's ``volume.size``.
     """
 
     machine_name: str
@@ -133,6 +142,7 @@ class LabFacts:
     scripted_api_url: str = ""
     vm_collector_address: str = "198.18.0.1"
     cpuset_targets: str = ""
+    incus_disk: Mapping[str, int] = field(default_factory=dict)
 
 
 def endpoints(manifest: Mapping[str, Any], facts: LabFacts) -> dict[str, Any]:
@@ -150,7 +160,8 @@ def endpoints(manifest: Mapping[str, Any], facts: LabFacts) -> dict[str, Any]:
         The endpoints document.
 
     Raises:
-        ValueError: An unknown inference mode, or ``scripted`` outside staging.
+        ValueError: An unknown inference mode, ``scripted`` outside staging,
+            or a manifest that requires Incus without the disk budget.
     """
     p = manifest["name"]
     requires = set(manifest.get("requires", []))
@@ -204,6 +215,11 @@ def endpoints(manifest: Mapping[str, Any], facts: LabFacts) -> dict[str, Any]:
         }
         if facts.cpuset_targets:
             incus["cpuset_targets"] = facts.cpuset_targets
+        missing = [k for k in INCUS_DISK if k not in facts.incus_disk]
+        if missing:
+            raise ValueError(f"the Incus disk budget lacks {', '.join(missing)}")
+        for key in INCUS_DISK:
+            incus[key] = int(facts.incus_disk[key])
         doc["incus"] = incus
     if "gpu" in requires:
         doc["gpu"] = {"arbiter_socket": layout.GPU_SOCKET}

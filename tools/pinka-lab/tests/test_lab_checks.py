@@ -89,7 +89,7 @@ class RegistryTest(Base):
         self.assertEqual(len(ids), len(set(ids)))
         for check in CHECKS:
             self.assertIsInstance(check, Check)
-            self.assertRegex(check.id, r"^[a-z]+\.[a-z_]+$")
+            self.assertRegex(check.id, r"^[a-z]+(\.[a-z_]+)+$")
             self.assertIn(check.severity, ("error", "warning"))
             self.assertTrue(check.description.endswith("."), check.id)
             self.assertTrue(check.remediation, check.id)
@@ -798,13 +798,18 @@ class DiskTest(Base):
         old = self.system({"/": 40, "/srv": 60}, [(24.0 * 8, {"/": 90}), (2.0, {"/": 90})])
         self.assertOutcome(run(checks.check_disk_free_space, old), "pass")
 
-    def test_the_record_keeps_the_last_runs(self) -> None:
-        runs = [(1000.0 - i, {"/": 40.0}) for i in range(checks.DISK_HISTORY_KEEP)]
+    def test_the_record_keeps_the_trend_window_by_age(self) -> None:
+        # Runs every 5 minutes for 8 days: those of the last 7 days stay, however
+        # many, so a short periodic interval never shortens the trend.
+        runs = [(i / 12, {"/": 40.0}) for i in range(1, 8 * 24 * 12)]
         system = self.system({"/": 40, "/srv": 60}, runs)
         run(checks.check_disk_free_space, system)
         kept = json.loads(system.written[self.HISTORY][0])["runs"]
-        self.assertEqual(len(kept), checks.DISK_HISTORY_KEEP)
+        self.assertEqual(
+            len(kept), 7 * 24 * 12 + 1
+        )  # the runs of 7 days (the oldest 7 days old) and this one
         self.assertEqual(kept[-1]["at"], "2026-01-01T12:00:00Z")
+        self.assertEqual(min(r["at"] for r in kept), "2025-12-25T12:00:00Z")
 
     def test_only_root_writes_the_record(self) -> None:
         system = self.system({"/": 40, "/srv": 60}, euid=1000)
@@ -817,28 +822,20 @@ class DiskTest(Base):
 
 
 class IncusTest(Base):
-    def pool(self, driver: str, free_gib: int) -> FakeSystem:
-        return FakeSystem(
-            {
-                "incus query /1.0/storage-pools/pinka-targets": (0, {"driver": driver}),
-                "incus query /1.0/storage-pools/pinka-targets/resources": (
-                    0,
-                    {"space": {"total": 100 * 2**30, "used": (100 - free_gib) * 2**30}},
-                ),
-            }
-        )
+    def pool(self, driver: str, config: dict[str, str] | None = None) -> FakeSystem:
+        listing = {
+            "driver": driver,
+            "config": {"volume.size": "3GiB"} if config is None else config,
+        }
+        return FakeSystem({"incus query /1.0/storage-pools/pinka-targets": (0, listing)})
 
     def test_pool(self) -> None:
-        self.assertOutcome(run(checks.check_incus_pool, self.pool("btrfs", 50)), "pass", "50.0")
+        self.assertOutcome(run(checks.check_incus_pool, self.pool("lvm")), "pass", "(lvm)")
         self.assertOutcome(
-            run(checks.check_incus_pool, self.pool("btrfs", 5)), "fail", "less than 20 GiB"
+            run(checks.check_incus_pool, self.pool("lvm", {})), "fail", "has no volume.size"
         )
-        self.assertOutcome(
-            run(checks.check_incus_pool, self.pool("dir", 50)), "fail", "expected btrfs"
-        )
-        self.assertOutcome(
-            run(checks.check_incus_pool, self.pool("lvm", 50), incus__backend="lvm"), "pass"
-        )
+        self.assertOutcome(run(checks.check_incus_pool, self.pool("btrfs")), "fail", "expected lvm")
+        self.assertOutcome(run(checks.check_incus_pool, self.pool("dir")), "fail", "expected lvm")
         self.assertOutcome(
             run(checks.check_incus_pool, FakeSystem(), node_role="inference"), "skip"
         )

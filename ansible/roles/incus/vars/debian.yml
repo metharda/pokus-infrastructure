@@ -8,3 +8,7 @@ incus_groups: {user: incus, admin: incus-admin}
 incus_units: {daemon: incus.service, user_socket: incus-user.socket}
 incus_cli: /usr/bin/incus
 incus_server_certificate: /var/lib/incus/server.crt
+# A loop pool's file, where Incus creates it.
+incus_pool_file: "/var/lib/incus/disks/{{ incus_pool_name }}.img"
+# The pool's thin pool, as Incus names it (its volume group is the pool's name).
+incus_pool_thinpool: "{{ incus_pool_name }}/IncusThinPool"

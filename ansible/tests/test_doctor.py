@@ -10,7 +10,16 @@ from typing import Any
 import pytest
 from pinka_lab.config import LabConfig
 
-from ansible_testlib import GROUP_VARS, INFRA, ROLES, _templar, ansible_vars, evaluate, load_yaml
+from ansible_testlib import (
+    GROUP_VARS,
+    INFRA,
+    ROLES,
+    _templar,
+    ansible_vars,
+    evaluate,
+    load_yaml,
+    render_template,
+)
 
 ROLE = ROLES / "doctor"
 IMPORTED_ROLES = (
@@ -63,7 +72,7 @@ def variables(**facts: Any) -> dict[str, Any]:
         "pinka_training_caps": {"timeout_seconds": 86400, "memory_max": "18G", "cpus": 8},
         "pinka_firewall_backend": "nftables",
         "pinka_bootstrap": {},
-        "host_profile": {"schema_version": 1, "storage_backend": "btrfs"},
+        "host_profile": {"schema_version": 1, "storage_backend": "lvm"},
         "node_role": "full",
         "doctor_images_defaults": ansible_vars(ROLES / "images" / "defaults" / "main.yml"),
         "doctor_images_vars": ansible_vars(ROLES / "images" / "vars" / "main.yml"),
@@ -320,7 +329,7 @@ def test_incus_and_images() -> None:
     data = render(pinka_features={"gpu_inference": False, "vm_targets": True})
     incus = data["incus"]
     assert incus["pool"] == "pinka-targets"
-    assert incus["backend"] == "btrfs"
+    assert incus["backend"] == "lvm"
     assert incus["projects"] == ["bench", "build"]
     assert {"name": "target-vm", "project": "bench"} in incus["profiles"]
     assert incus["cert_dir"] == "/etc/pinka/incus"
@@ -329,7 +338,7 @@ def test_incus_and_images() -> None:
     assert incus["own"] is True
     installed = {
         "schema_version": 1,
-        "storage_backend": "btrfs",
+        "storage_backend": "lvm",
         "components": {"incus": {"installed": True}},
     }
     for facts, own in (
@@ -492,3 +501,57 @@ def test_the_gpu_arbiter_and_the_inference_guard(
         "ports": [18704],
         "control_ports": control,
     }
+
+
+# --- the periodic run ---------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("minutes", "calendar"),
+    [(5, "*:0/5"), (30, "*:0/30"), (60, "0/1:00"), (360, "0/6:00"), (1440, "0/24:00")],
+)
+def test_the_periodic_timer(minutes: int, calendar: str) -> None:
+    scope = variables(doctor_periodic_interval_minutes=minutes)
+    text = render_template("doctor", "pinka-doctor.timer.j2", scope)
+    assert f"OnCalendar={calendar}\n" in text
+    assert "AccuracySec=1s\n" in text
+    assert "Persistent=true\n" in text
+    assert "WantedBy=timers.target" in text
+
+
+def test_the_interval_divides_the_hour_or_the_day() -> None:
+    spec = load_yaml(ROLES / "doctor" / "meta" / "argument_specs.yml")
+    choices = spec["argument_specs"]["main"]["options"]["doctor_periodic_interval_minutes"][
+        "choices"
+    ]
+    assert min(choices) == 5  # AccuracySec and the run itself stay far below twice it
+    for minutes in choices:
+        assert 60 % minutes == 0 if minutes < 60 else 1440 % minutes == 0 and minutes % 60 == 0
+
+
+@pytest.mark.parametrize(("role", "pool_checks"), [("full", True), ("inference", False)])
+def test_the_periodic_service(role: str, pool_checks: bool) -> None:
+    scope = variables(node_role=role)
+    text = render_template("doctor", "pinka-doctor.service.j2", scope)
+    unit = {k: v for k, _, v in (line.partition("=") for line in text.splitlines()) if v}
+    assert unit["After"] == "incus.service"
+    assert "Wants" not in unit  # never starts an Incus the operator stopped
+    assert unit["SuccessExitStatus"] == "1 2"  # results; 3, an internal error, fails
+    argv = unit["ExecStart"].split()
+    assert argv[:3] == ["/usr/local/bin/pinka", "doctor", "--only"]
+    assert argv[4:] == ["--report", "/var/lib/pinka/doctor/last.json"]
+    checks = argv[3].split(",")
+    assert checks[-1] == "disk.free_space"
+    assert ("incus.pool.overcommitted" in checks) is pool_checks
+    from pinka_lab.checks import CHECKS  # noqa: PLC0415 - the CLI's own list
+
+    assert set(checks) <= {c.id for c in CHECKS}  # doctor --only refuses unknown IDs
+
+
+def test_the_lab_description_names_the_periodic_report() -> None:
+    data = render()
+    assert data["doctor"] == {
+        "report": "/var/lib/pinka/doctor/last.json",
+        "periodic_interval_minutes": 60,
+    }
+    assert "min_free_gib" not in data["incus"]

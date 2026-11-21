@@ -174,8 +174,8 @@ def cards(profile: dict[str, Any]) -> list[tuple[str, str]]:
             + (_yes(caps.get("kvm_nested")) if caps.get("kvm_nested") is not None else "unknown"),
         ),
         (
-            "Storage backends",
-            f"btrfs {_yes(caps.get('btrfs'))}, LVM thin {_yes(caps.get('dm_thin_pool'))}; "
+            "Storage backend",
+            f"LVM thin {_yes(caps.get('dm_thin_pool'))}; "
             f"pool backend {profile.get('storage_backend') or 'none'}",
         ),
         (

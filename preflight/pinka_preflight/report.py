@@ -223,7 +223,6 @@ def build_report(
             "kvm_present": k.kvm_present,
             "kvm_usable": k.kvm_usable,
             "kvm_nested": k.kvm_nested,
-            "btrfs": k.feature_present("btrfs"),
             "dm_thin_pool": k.module_available("dm_thin_pool"),
             "secure_boot": k.secure_boot,
             "nouveau_loaded": k.nouveau_loaded,

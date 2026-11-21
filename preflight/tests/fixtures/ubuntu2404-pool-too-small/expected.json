@@ -1,0 +1,12 @@
+{
+  "needs_action": [
+    "incus_pool_size"
+  ],
+  "needs_action_contains": [
+    "The Incus pool's incus_pool_size (100.0 GiB) is smaller than the sum",
+    "missing 81.0 GiB",
+    "set incus_pool_size to auto or at least 181GiB",
+    "or lower the limits"
+  ],
+  "outcome": "needs_action"
+}

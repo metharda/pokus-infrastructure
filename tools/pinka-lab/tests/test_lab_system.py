@@ -90,6 +90,26 @@ class FileTest(unittest.TestCase):
         assert found is not None
         self.assertEqual((found.mode, found.is_dir, found.size), (0o640, False, 5))
         self.assertEqual(system.listdir(os.path.dirname(path)), ["file.json"])
+        # Missing parents are created 0700, every level.
+        deep = os.path.join(self.root, "a", "b", "report.json")
+        system.write_text(deep, "{}\n", 0o600)
+        for level in ("a", os.path.join("a", "b")):
+            info = system.info(os.path.join(self.root, level))
+            assert info is not None
+            self.assertEqual(info.mode, 0o700, level)
+        # The temporary file is created with the mode, never wider in between.
+        from unittest import mock
+
+        modes: list[int] = []
+        real_open = os.open
+
+        def spy(name: str, flags: int, mode: int = 0o777) -> int:
+            modes.append(mode)
+            return real_open(name, flags, mode)
+
+        with mock.patch.object(os, "open", spy):
+            system.write_text(os.path.join(self.root, "secret.json"), "{}\n", 0o600)
+        self.assertEqual(modes, [0o600])
         os.symlink(path, os.path.join(self.root, "link"))
         link = system.info(os.path.join(self.root, "link"))
         assert link is not None

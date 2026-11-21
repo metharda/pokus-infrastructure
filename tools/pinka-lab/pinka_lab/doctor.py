@@ -2,8 +2,9 @@
 
 Every check has an ID, a description, a severity (``error`` or
 ``warning``), a result (``pass``, ``fail`` or ``skip``), a detail and a
-remediation. Doctor exits 0 when nothing failed, 1 when only warnings failed
-and 2 when an error failed.
+remediation. Doctor exits 0 when nothing failed, 1 when only warnings failed,
+2 when an error failed, and 3 when it could not run its checks (an internal
+error, never a result).
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ RESULTS = ("pass", "fail", "skip")
 EXIT_OK = 0
 EXIT_WARNINGS = 1
 EXIT_FAILURES = 2
+EXIT_INTERNAL = 3
 
 
 @dataclass(frozen=True)

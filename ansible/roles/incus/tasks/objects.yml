@@ -1,8 +1,9 @@
 # Managed by pinka (ansible/roles/incus/tasks/objects.yml). Local changes will be overwritten.
 #
 # Converge every Incus object pinka maintains. The storage pool and the
-# networks are only created when missing: their addresses and sources are
-# chosen once and never rewritten.
+# networks are only created when missing: their addresses, sources and sizes
+# are chosen once and never rewritten (the pool's volume.size, a live key, is
+# the one setting kept on an existing pool).
 - name: Configure the Incus server
   pinka_incus_object:
     kind: server
@@ -15,6 +16,113 @@
     config: "{{ incus_default_project_config }}"
   when: incus_own | bool
 
+# pinka never lowers a pool's size, and Incus refuses a smaller size. The
+# role never changes an existing pool's size (update: false below); an
+# explicit incus_pool_size below the pool's current size, which preflight
+# refuses first, is refused here again, so it is not mistaken for a change.
+- name: Read the existing loop pool's size
+  ansible.builtin.command:
+    argv: [incus, storage, get, "{{ incus_pool_name }}", size]
+  register: incus_pool_size_now
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when:
+    - incus_pool_source == 'loop'
+    - (incus_pool_size | string) != 'auto'
+
+- name: Refuse to lower the loop pool's size
+  ansible.builtin.assert:
+    that:
+      - (incus_pool_size_now.stdout | trim | pinka_size_mib) <= (incus_pool_loop_size | pinka_size_mib)
+    fail_msg: >-
+      incus_pool_size {{ incus_pool_loop_size }} is below the pool's current size
+      {{ incus_pool_size_now.stdout | trim }}. pinka never lowers a pool's size, and Incus
+      refuses a smaller size. Set incus_pool_size to auto or to at least
+      {{ incus_pool_size_now.stdout | trim }}.
+    quiet: true
+  when:
+    - incus_pool_source == 'loop'
+    - (incus_pool_size | string) != 'auto'
+    - incus_pool_size_now.rc | default(1) == 0
+    - incus_pool_size_now.stdout | default('') | trim | length > 0
+
+# On btrfs a loop pool's file needs No_COW, set while it is empty. Incus
+# creates the file itself and refuses one that exists, so the role sets
+# No_COW on its directory first: btrfs gives a new file its directory's
+# No_COW (fs/btrfs/inode.c of Linux 6.8, btrfs_inherit_iflags, 6173-6194,
+# called at 6260). Incus creates the directory (0700) when it starts; a
+# directory the role creates is recorded first, and the attribute set on an
+# existing one is recorded with its value before (uninstall restores it). Not
+# on btrfs, the directory is left alone; an existing file is not touched
+# (preflight refuses one on btrfs without No_COW).
+- name: Look for the loop pool's file and its directory
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    get_checksum: false
+  loop: ["{{ incus_pool_file }}", "{{ incus_pool_file | dirname }}"]
+  register: incus_pool_paths
+  when: incus_pool_source == 'loop'
+
+- name: Read the file system type of the loop pool's directory
+  ansible.builtin.command:
+    argv:
+      - stat
+      - --file-system
+      - --format=%T
+      - "{{ (incus_pool_file | dirname) if incus_pool_paths.results[1].stat.exists
+            else (incus_pool_file | dirname | dirname) }}"
+  register: incus_pool_dir_fs
+  changed_when: false
+  check_mode: false
+  when:
+    - incus_pool_source == 'loop'
+    - not incus_pool_paths.results[0].stat.exists
+
+- name: Give a new loop pool's file No_COW on btrfs
+  when:
+    - incus_pool_source == 'loop'
+    - not incus_pool_paths.results[0].stat.exists
+    - incus_pool_dir_fs.stdout | default('') | trim == 'btrfs'
+  vars:
+    incus_pool_dir: "{{ incus_pool_file | dirname }}"
+    incus_pool_dir_exists: "{{ incus_pool_paths.results[1].stat.exists }}"
+  block:
+    - name: Read the attributes of the loop pool's directory
+      ansible.builtin.command:
+        argv: [lsattr, -d, "{{ incus_pool_dir }}"]
+      register: incus_pool_dir_attr
+      changed_when: false
+      check_mode: false
+      when: incus_pool_dir_exists | bool
+
+    - name: Record the loop pool's directory or its No_COW before
+      pinka_install_record:
+        state: add
+        added: >-
+          {{ {'paths': [incus_pool_dir]} if not (incus_pool_dir_exists | bool)
+             else {'changed': {'nocow:' ~ incus_pool_dir: 'off'}} }}
+      when: >-
+        not (incus_pool_dir_exists | bool)
+        or 'C' not in (incus_pool_dir_attr.stdout | default('') | split | first | default(''))
+
+    - name: Create the loop pool's directory
+      ansible.builtin.file:
+        path: "{{ incus_pool_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+      when: not (incus_pool_dir_exists | bool)
+
+    - name: Set No_COW on the loop pool's directory
+      ansible.builtin.command:
+        argv: [chattr, +C, "{{ incus_pool_dir }}"]
+      changed_when: true
+      when: >-
+        not (incus_pool_dir_exists | bool)
+        or 'C' not in (incus_pool_dir_attr.stdout | default('') | split | first | default(''))
+
 - name: Create the storage pool {{ incus_pool_name }}
   pinka_incus_object:
     kind: storage_pool
@@ -23,6 +131,69 @@
     driver: "{{ incus_pool.driver }}"
     config: "{{ incus_pool.config }}"
     update: false
+
+# volume.size is the one setting pinka keeps on an existing pool: a live key
+# (the size of new image volumes), not a resize; Incus resizes or regenerates
+# a cached image volume at its next use.
+- name: Set the image volume size of the storage pool {{ incus_pool_name }}
+  pinka_incus_object:
+    kind: storage_pool
+    name: "{{ incus_pool.name }}"
+    driver: "{{ incus_pool.driver }}"
+    config:
+      volume.size: "{{ incus_pool_volume_size_value }}"
+
+# A loop pool's thin pool passes no discards down to the loop file: a
+# discard would punch a hole in the preallocated file (Incus mounts its
+# volumes with discard). nopassdown still frees the blocks for reuse inside
+# the pool (lvmthin(7), "Discard"). LVM changes passdown to nopassdown on an
+# active pool (only a change to or from ignore needs it inactive,
+# tools/lvchange.c of lvm2 2.03.16), so new and existing pools get it. A
+# device-backed pool keeps LVM's default.
+- name: Read the discards mode of the loop pool's thin pool
+  ansible.builtin.command:
+    argv: [lvs, --noheadings, -o, discards, "{{ incus_pool_thinpool }}"]
+  register: incus_pool_discards
+  changed_when: false
+  check_mode: false
+  failed_when: incus_pool_discards.rc != 0 and not ansible_check_mode
+  when: incus_pool_source == 'loop'
+
+- name: Pass no discards down to the loop file
+  ansible.builtin.command:
+    argv: [lvchange, --discards, nopassdown, "{{ incus_pool_thinpool }}"]
+  changed_when: true
+  when:
+    - incus_pool_source == 'loop'
+    - incus_pool_discards.stdout | default('') | trim != 'nopassdown'
+
+# Incus creates a loop pool's file sparse; preallocated, it takes the space
+# preflight required on its mount point. The host's file system can still
+# take more under it (copy-on-write on btrfs after a snapshot, a scrub or a
+# balance), so doctor watches that file system's free space. A file grown
+# later (incus storage set ... size=) is preallocated on the next run.
+- name: Read the allocation of the loop pool's file
+  ansible.builtin.command:
+    argv: [stat, --format=%s %b %B, "{{ incus_pool_file }}"]
+  register: incus_pool_file_stat
+  changed_when: false
+  # A loop pool without its file is an error (an Incus whose directory is not
+  # /var/lib/incus); in check mode a new pool has no file yet.
+  failed_when: incus_pool_file_stat.rc != 0 and not ansible_check_mode
+  check_mode: false
+  when: incus_pool_source == 'loop'
+
+- name: Preallocate the loop pool's file
+  ansible.builtin.command:
+    argv: [fallocate, --length, "{{ incus_pool_file_size }}", "{{ incus_pool_file }}"]
+  vars:
+    incus_pool_file_size: "{{ incus_pool_file_stat.stdout.split()[0] }}"
+  changed_when: true
+  when:
+    - incus_pool_source == 'loop'
+    - incus_pool_file_stat.rc | default(1) == 0
+    - (incus_pool_file_stat.stdout.split()[1] | int) * (incus_pool_file_stat.stdout.split()[2] | int)
+      < (incus_pool_file_stat.stdout.split()[0] | int)
 
 - name: Create the networks
   pinka_incus_object:

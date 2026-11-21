@@ -1,7 +1,6 @@
 {
   "env_class": "wsl2",
   "features": {
-    "btrfs_pool": true,
     "gpu_inference": true,
     "vm_targets": true
   },

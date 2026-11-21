@@ -559,7 +559,41 @@ def status(system: System, config: LabConfig) -> int:
     out(
         f"last backup: {when}" + ("" if config.get("backup", "configured") else " (not configured)")
     )
+    out(periodic_doctor_line(system, config))
     return 0
+
+
+def periodic_doctor_line(system: System, config: LabConfig) -> str:
+    """The last periodic doctor run, its time, warnings and failures (root only).
+
+    Args:
+        system: Host access.
+        config: The lab description.
+
+    Returns:
+        The line for the operator.
+    """
+    path = str(config.get("doctor", "report", default="/var/lib/pinka/doctor/last.json"))
+    if system.euid() != 0:
+        return "periodic doctor run: only visible to root (sudo pinka status)"
+    text = system.read_text(path)
+    try:
+        report = json.loads(text or "")
+        failing = [c for c in report["checks"] if c["result"] == "fail"]
+        when = str(report["checked_at"])
+    except (ValueError, TypeError, KeyError):
+        return f"periodic doctor run: no readable report ({path})"
+    warnings = [c["id"] for c in failing if c.get("severity") == "warning"]
+    failures = [c["id"] for c in failing if c.get("severity") != "warning"]
+    parts = [
+        p
+        for p in (
+            f"failures: {', '.join(failures)}" if failures else "",
+            f"warnings: {', '.join(warnings)}" if warnings else "",
+        )
+        if p
+    ]
+    return f"periodic doctor run: {when}; " + ("; ".join(parts) if parts else "all checks passed")
 
 
 # --- the GPU arbiter ------------------------------------------------------------------

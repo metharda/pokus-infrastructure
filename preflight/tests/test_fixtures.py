@@ -118,7 +118,14 @@ class FixtureTreeTest(unittest.TestCase):
             "fedora-selinux-enforcing-firewalld",
             "ubuntu2404-ufw-active",
             "ubuntu2404-aarch64-no-gpu",
-            "ubuntu2404-no-btrfs-no-dmthin",
+            "ubuntu2404-no-dmthin",
+            "ubuntu2404-btrfs-no-dmthin",
+            "ubuntu2404-wsl2-dmthin-loadable",
+            "ubuntu2404-wsl2-no-dmthin",
+            "ubuntu2404-pool-too-small",
+            "ubuntu2404-pool-auto-3-researchers",
+            "ubuntu2404-pool-auto-no-room",
+            "ubuntu2404-pool-existing-smaller",
             "ubuntu2404-cgroup-v1",
             "ubuntu2404-low-memory",
             "conflicting-signals",
@@ -221,6 +228,12 @@ class FixtureDecisionTest(unittest.TestCase):
                     self.assertTrue(
                         any(needle in r for r in doc["unsupported_reasons"]),
                         f"{name}: reason {needle!r}",
+                    )
+            elif key == "needs_action_contains":
+                for needle in value:
+                    self.assertTrue(
+                        any(needle in a["action"] for a in doc["needs_action"]),
+                        f"{name}: action {needle!r}",
                     )
             elif key == "degraded_contains":
                 for needle in value:

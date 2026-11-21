@@ -1,6 +1,6 @@
 {
   "pool": {
-    "size_gib": 30,
+    "size_gib": 200,
     "source": "loop"
   },
   "schema_version": 1

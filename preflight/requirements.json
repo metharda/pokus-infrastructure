@@ -171,11 +171,20 @@
     "pool_file": "/var/lib/incus/disks/pinka-targets.img"
   },
   "pool": {
-    "margin": 0.5,
-    "floor_gib": 30,
-    "source": "the incus role's root disk sizes (incus_target_container, incus_target_vm, incus_probe_client, incus_build_instance) and the blueprints' estimated_size_gib; margin (estimate): the instances' copy-on-write divergence from their images, snapshots and the targets' own data; floor: the pool the distribution test VMs install with (30 GiB)",
+    "metadata_gib": 1,
+    "metadata_basis": "estimated",
+    "metadata_source": "lvm.thinpool_metadata_size 1GiB, which lvmthin(7) (lvm2 2.03.16, \"Size of pool metadata LV\") recommends as enough for all practical purposes; LVM keeps a spare metadata volume of the same size (DEFAULT_POOL_METADATA_SPARE)",
+    "lvm_overhead_gib": 1,
+    "lvm_overhead_basis": "estimated",
+    "lvm_overhead_source": "the physical volume's metadata area and the rounding of each logical volume to whole 4 MiB extents: a few MiB, counted as 1 GiB",
+    "headroom_gib": 20,
+    "headroom_basis": "estimated",
+    "headroom_source": "room for the images no limit counts (images imported into personal projects, images the platform derives in build) before doctor's incus.pool.space_low warns; the value of doctor's former minimum free pool space",
+    "volume_fs_gib": 1,
+    "volume_fs_basis": "estimated",
+    "volume_fs_source": "an image volume's ext4 filesystem: its journal (up to 64 MiB), inode tables and reserved blocks; an estimate until a real-machine test measures it",
     "loop_reserve_gib": 50,
-    "loop_reserve_source": "estimate: room the loop file's file system keeps beyond everything pinka puts there, for the host's own use (package updates, logs, temporary files) while the pool's file, which counts fully but grows only with use, fills; never lowered (the schema's minimum)"
+    "loop_reserve_source": "estimate: room the loop file's file system keeps beyond everything pinka puts there, for the host's own use (package updates, logs, temporary files) and for space the host's file system takes under the preallocated file (copy-on-write on btrfs); doctor watches it; never lowered (the schema's minimum)"
   },
   "images": {
     "cadvisor": {
@@ -461,26 +470,32 @@
   "blueprints": {
     "base": {
       "version": "1.0.1",
+      "type": "container",
       "estimated_size_gib": 0.5
     },
     "docker-host": {
-      "version": "1.0.1",
+      "version": "1.0.2",
+      "type": "container",
       "estimated_size_gib": 0.8
     },
     "pg-primary": {
       "version": "1.0.1",
+      "type": "container",
       "estimated_size_gib": 0.6
     },
     "probe-client": {
       "version": "1.0.1",
+      "type": "container",
       "estimated_size_gib": 0.6
     },
     "redis-cache": {
       "version": "1.0.1",
+      "type": "container",
       "estimated_size_gib": 0.6
     },
     "web-nginx-flask": {
       "version": "1.0.1",
+      "type": "container",
       "estimated_size_gib": 0.6
     }
   },
@@ -494,7 +509,9 @@
     "container": 8.0,
     "vm": 16.0,
     "probe_client": 4.0,
-    "build": 16.0
+    "build": 16.0,
+    "vm_state": 0.48828125,
+    "build_state": 0.48828125
   },
   "serving": {
     "profiles": {
@@ -529,9 +546,23 @@
     "docker_data_root": "/var/lib/docker",
     "pool": {
       "source": "loop",
-      "size_gib": null
+      "size_gib": null,
+      "volume_size_gib": null,
+      "device": ""
     },
     "concurrent_targets": 2,
+    "researchers": 3,
+    "personal_disk_gib": 20.0,
+    "incus_disk": {
+      "target_vm_root_gib": 16.0,
+      "target_vm_state_gib": 0.48828125,
+      "target_container_root_gib": 8.0,
+      "probe_client_root_gib": 4.0,
+      "build_root_gib": 16.0,
+      "build_state_gib": 0.48828125,
+      "bench_limits_disk_gib": null,
+      "build_limits_disk_gib": null
+    },
     "model": null,
     "vllm_profile": "ada-12g",
     "images": [

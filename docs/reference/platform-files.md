@@ -221,6 +221,9 @@ The addresses and paths infra provides to the active platform, /etc/pinka/platfo
 | `incus` | object | no | With `requires: [incus]`. |
 | `incus.url` | string | yes | The Incus HTTPS API on loopback. |
 | `incus.cert_dir` | string | yes | Directory of the client certificates, `<cert_dir>/<account>/{client.crt,client.key,server.crt}`. |
+| `incus.bench_limits_disk` | integer | yes | The bench project's limits.disk in bytes: the cap on its instances' root disks, custom volumes and VM state volumes. |
+| `incus.build_limits_disk` | integer | yes | The build project's limits.disk in bytes, shared with infra's own golden image builds. |
+| `incus.pool_volume_size` | integer | yes | The Incus pool's volume.size in bytes: the size of every image volume, so the largest image the pool takes. |
 | `incus.projects` | array | yes | The Incus projects of the platform (`bench`, `build`). |
 | `incus.run_network_socket` | string | yes | The run-network helper, for the controller only. |
 | `incus.cpuset_targets` | string | no | The CPUs of the target instances (a Linux cpuset list), when `cpuset_targets` is set; every target's `limits.cpu` is a range inside it. |

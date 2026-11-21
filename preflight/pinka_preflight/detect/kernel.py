@@ -18,10 +18,9 @@ MODULES = (
     "kvm",
     "kvm_intel",
     "kvm_amd",
-    "btrfs",
     "dm_thin_pool",
 )
-FILESYSTEM_MODULES = ("btrfs", "overlay")
+FILESYSTEM_MODULES = ("overlay",)
 EFI_SECURE_BOOT_GLOB = "/sys/firmware/efi/efivars/SecureBoot-*"
 EFI_VALUE_OFFSET = 4  # efivarfs files start with 4 attribute bytes
 

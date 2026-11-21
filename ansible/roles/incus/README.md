@@ -27,8 +27,13 @@ Incus for benchmark targets and personal sandboxes:
   `record.yml`, on pinka's own in `record_settings.yml`; uninstall sets them
   back on both (on pinka's own also `core.https_address`, unset before
   pinka).
-- **Storage:** one pool `pinka-targets`, btrfs or LVM thin as preflight
-  decided, on a loop file (`incus_pool_size`) or a dedicated device. A device
+- **Storage:** one LVM thin pool `pinka-targets` (ADR-0017), on a loop file
+  (`incus_pool_size`, preallocated and watched by doctor; on btrfs created
+  with No_COW from its directory) or a dedicated
+  device, with a 1 GiB metadata volume and the image volume size
+  `incus_pool_volume_size` (`volume.size`, the one setting kept on an existing
+  pool). `bench` and `build` have `limits.disk` and block snapshots; the
+  personal projects' `limits.disk` (20 GiB) counts in the pool's size. A device
   is formatted only after these checks: the confirmation
   variable repeats the device, nothing is mounted, no signature
   (`wipefs --no-act`, `lsblk`) unless `incus_pool_device_force_wipe`, and an

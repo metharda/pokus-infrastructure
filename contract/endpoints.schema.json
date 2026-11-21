@@ -207,7 +207,10 @@
         "url",
         "cert_dir",
         "projects",
-        "run_network_socket"
+        "run_network_socket",
+        "bench_limits_disk",
+        "build_limits_disk",
+        "pool_volume_size"
       ],
       "properties": {
         "url": {
@@ -218,6 +221,21 @@
           "type": "string",
           "pattern": "^/",
           "description": "Directory of the client certificates, `<cert_dir>/<account>/{client.crt,client.key,server.crt}`."
+        },
+        "bench_limits_disk": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The bench project's limits.disk in bytes: the cap on its instances' root disks, custom volumes and VM state volumes."
+        },
+        "build_limits_disk": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The build project's limits.disk in bytes, shared with infra's own golden image builds."
+        },
+        "pool_volume_size": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The Incus pool's volume.size in bytes: the size of every image volume, so the largest image the pool takes."
         },
         "projects": {
           "type": "array",

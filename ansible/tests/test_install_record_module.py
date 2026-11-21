@@ -205,12 +205,16 @@ class InstallRecordTest(unittest.TestCase):
             "changed": {"timezone": "Europe/Example", "firewalld:zone-of:tailscale0": None},
             "repo_keys": ["0000000000000000000000000000000000000001"],
             "incus_objects": ["project:user-1000", "network:incusbr-1000"],
+            "paths": ["/var/lib/incus/disks"],
         }
         result = mod.run_module(
             params(record_path, state="add", added=first), check_mode=False, run=fake_run()
         )
         self.assertTrue(result["changed"])
-        later = {"changed": {"timezone": "Etc/UTC", "sysctl:net.ipv4.ip_forward": "0"}}
+        later = {
+            "changed": {"timezone": "Etc/UTC", "sysctl:net.ipv4.ip_forward": "0"},
+            "paths": ["/var/lib/incus/disks"],
+        }
         mod.run_module(
             params(record_path, state="add", added=later), check_mode=False, run=fake_run()
         )
@@ -225,6 +229,7 @@ class InstallRecordTest(unittest.TestCase):
         )
         self.assertEqual(added["repo_keys"], ["0000000000000000000000000000000000000001"])
         self.assertEqual(added["incus_objects"], ["network:incusbr-1000", "project:user-1000"])
+        self.assertEqual(added["paths"], ["/var/lib/incus/disks"])  # once
         again = mod.run_module(
             params(record_path, state="add", added=later), check_mode=False, run=fake_run()
         )

@@ -1,0 +1,10 @@
+{
+  "outcome": "unsupported",
+  "pool": {
+    "basis": "computed",
+    "size_gib": 181
+  },
+  "unsupported_contains": [
+    "the Incus pool (loop file): 181.0 GiB, missing"
+  ]
+}

@@ -10,7 +10,9 @@ Outcome precedence: ``unsupported`` > ``needs_action`` > ``degraded`` >
 ``supported``. A failed core requirement normally means ``unsupported``; it
 becomes ``needs_action`` when a matching provider rule lists it under
 ``resolves`` (for example, systemd is not PID 1 on WSL2 because ``wsl.conf``
-does not enable it).
+does not enable it), or when the requirement itself says ``on_fail:
+needs_action`` (``lvm_thin_pool``: the Incus pool is LVM thin only, and the
+change that provides ``dm_thin_pool`` is named per environment and family).
 
 The operator's choices given on the command line (``choices``: the
 ``install_nvidia_driver`` mode, consent to MOK enrollment) are facts too. A
@@ -95,7 +97,26 @@ Facts = dict[str, Any]
 # Values of --nvidia-driver (the host's install_nvidia_driver setting).
 NVIDIA_DRIVER_MODES = ("auto", "manual", "skip")
 # The operator's choices when none are given: bootstrap's defaults.
-DEFAULT_CHOICES: dict[str, Any] = {"nvidia_driver_mode": "auto", "mok_enrollment_accepted": False}
+DEFAULT_CHOICES: dict[str, Any] = {
+    "nvidia_driver_mode": "auto",
+    "mok_enrollment_accepted": False,
+    "node_role": "full",
+}
+# The node roles a host can have; INCUS_ROLES run Incus (the lab).
+NODE_ROLES = ("full", "lab", "inference")
+INCUS_ROLES = ("full", "lab")
+
+
+def runs_incus(node_role: object) -> bool:
+    """Whether a node runs Incus: any role but a known one without it (fails closed)."""
+    return not (node_role in NODE_ROLES and node_role not in INCUS_ROLES)
+
+
+def needed_on(roles: Sequence[str] | None, node_role: object) -> bool:
+    """Whether a requirement limited to ``roles`` applies; an unknown role keeps it."""
+    return roles is None or node_role not in NODE_ROLES or node_role in roles
+
+
 # The fact a requirement with a remediation compares ({actual} of its text).
 REMEDIATION_FACTS = {
     "driver_cuda_min": "gpu_driver_cuda",
@@ -136,7 +157,8 @@ class Decision:
         provider: Provider role (``baremetal``, ``wsl2``, ``vm``) or None.
         features: Feature flags.
         disabled_features: Features that make the host degraded, with impact text.
-        storage_backend: ``btrfs``, ``lvm`` or None.
+        storage_backend: ``lvm`` (the Incus pool is LVM thin only), or None
+            when ``dm_thin_pool`` is missing.
         core_requirements: Core requirement results.
         minimums: Hardware minimum results (CPU threads; memory and the disk per
             mount point once the requirements are applied).
@@ -347,8 +369,7 @@ def build_facts(
         "cgroup2_controllers": list(kernel.cgroup2_controllers),
         "dev_net_tun": kernel.tun,
         "kvm_usable": kernel.kvm_usable,
-        "btrfs_available": kernel.feature_present("btrfs"),
-        "dm_thin_pool_available": kernel.module_available("dm_thin_pool"),
+        "lvm_thin_pool": kernel.module_available("dm_thin_pool"),
         "secure_boot": kernel.secure_boot,
         "nvidia_gpu_present": nvidia and gpu.present,
         "nvidia_gpu_usable": nvidia and gpu.usable,
@@ -495,6 +516,10 @@ def _core_checks(matrix: Mapping[str, Any], facts: Facts, kernel: KernelInfo) ->
     for req in matrix["core_requirements"]:
         rid = req["id"]
         values = req.get("values", [])
+        roles = req.get("node_roles")
+        if not needed_on(roles, facts.get("node_role")):
+            checks.append(Check(rid, True, f"not needed on a {facts.get('node_role')} node"))
+            continue
         if rid == "cgroup2_controllers":
             missing = [v for v in values if v not in facts["cgroup2_controllers"]]
             checks.append(
@@ -514,6 +539,27 @@ def _core_checks(matrix: Mapping[str, Any], facts: Facts, kernel: KernelInfo) ->
         else:
             raise ValueError(f"unknown core requirement {rid!r}")
     return checks
+
+
+def _action(actions: Mapping[str, Any], d: Decision, env: Environment) -> str:
+    """The operator action of a core requirement that fails as ``needs_action``.
+
+    Args:
+        actions: The requirement's ``actions``: ``environments``, ``families``
+            and ``default``.
+        d: The decision so far (its family).
+        env: Environment classification.
+
+    Returns:
+        The environment's text, else the family's, else the default.
+    """
+    by_env = actions.get("environments", {})
+    if env.env_class in by_env:
+        return str(by_env[env.env_class])
+    by_family = actions.get("families", {})
+    if d.family in by_family:
+        return str(by_family[d.family])
+    return str(actions["default"])
 
 
 def _minimum_checks(matrix: Mapping[str, Any], facts: Facts) -> list[Check]:
@@ -551,9 +597,6 @@ def _features(
     notes: list[str] = []
     for name, spec in matrix["features"].items():
         if flags[name]:
-            continue
-        only_if = spec.get("only_if_missing")
-        if only_if and flags.get(str(only_if)):
             continue
         detail = f"{name} disabled (unmet: {', '.join(unmet[name])})"
         if spec["on_missing"] == "degrade":
@@ -686,12 +729,8 @@ def evaluate(  # noqa: PLR0912, PLR0915 - one pass over the documented matrix se
     d.notes.extend(feature_notes)
     if not facts["nvidia_gpu_usable"]:
         d.without_usable_gpu = without_usable_gpu(matrix, facts)
-    for backend in matrix["storage"]["backends"]:
-        if d.features.get(backend["feature"]):
-            d.storage_backend = str(backend["backend"])
-            break
-    if d.storage_backend is None:
-        d.unsupported_reasons.append(str(matrix["storage"]["none_reason"]))
+    if facts["lvm_thin_pool"] and runs_incus(facts["node_role"]):
+        d.storage_backend = "lvm"
 
     resolved: set[str] = set()
     rules = matrix.get("provider_rules", {}).get(d.provider or "", {})
@@ -734,7 +773,15 @@ def evaluate(  # noqa: PLR0912, PLR0915 - one pass over the documented matrix se
     for check in d.core_requirements:
         if check.ok or check.id in resolved:
             continue
-        if check.id == "no_blocking_conflicts":
+        spec = next(r for r in matrix["core_requirements"] if r["id"] == check.id)
+        if spec.get("on_fail") == "needs_action":
+            d.needs_action.append(
+                {
+                    "id": check.id,
+                    "action": f"{spec['remediation']} {_action(spec['actions'], d, env)}",
+                }
+            )
+        elif check.id == "no_blocking_conflicts":
             for c in conflicts.conflicts:
                 if c.severity == "blocking":
                     d.unsupported_reasons.append(f"blocking conflict: {c.message}. {c.remediation}")
@@ -877,6 +924,7 @@ def apply_requirements(d: Decision, req: Requirements) -> None:
             )
         )
     d.unsupported_reasons.extend(req.unsupported)
+    d.needs_action.extend(req.needs_action)
     d.degraded_reasons.extend(req.degraded)
     d.warnings.extend(req.warnings)
     _set_outcome(d)

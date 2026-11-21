@@ -36,7 +36,7 @@ Every non-secret choice of the installer TUI, replayed with bootstrap.sh --answe
 | `resources.concurrent_targets` | integer | no | Targets that run at once (incus_concurrent_targets): they size the bench project's memory and the memory preflight requires. |
 | `storage` | object | yes | The Incus storage pool of the targets. |
 | `storage.source` | one of `loop`, `device` | yes | loop: a loop file inside the system; device: a dedicated disk, formatted. |
-| `storage.loop_size_gib` | any | no | Size of the loop file (source loop): auto (computed by preflight from the golden images, the concurrent targets' root disks and the free space), or whole GiB, at least 20. |
+| `storage.loop_size_gib` | any | no | Size of the loop file (source loop): auto (the sum preflight computes of everything that may be written to the Incus pool: the projects' disk limits, the image volumes, the thin pool's metadata and a headroom), or whole GiB, at least 20, which must hold that sum. |
 | `storage.device` | string | no | The pool disk by its /dev/disk/by-id path (source device). |
 | `storage.device_confirm` | string | no | Must equal device exactly; the pool disk is formatted only then. |
 | `storage.force_wipe` | boolean | no | Wipe a device that carries signatures (typed WIPE confirmation in the TUI). |

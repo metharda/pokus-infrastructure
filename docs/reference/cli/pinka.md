@@ -89,13 +89,15 @@ pinka preflight [-h] [--json] [--plan FILE]
 Run the health and security checks (root).
 
 ```text
-pinka doctor [-h] [--json] [--smoke]
+pinka doctor [-h] [--json] [--smoke] [--only IDS] [--report PATH]
 ```
 
 | Argument | Value | Default | Description |
 | --- | --- | --- | --- |
 | `--json` | — | — | print the report as JSON |
 | `--smoke` | — | — | also launch a throwaway target of every golden image |
+| `--only` | `IDS` | — | run only these checks, comma-separated IDs (the periodic run's) |
+| `--report` | `PATH` | — | also write the JSON report to PATH, replaced atomically (root only) |
 
 ### pinka status
 
@@ -467,4 +469,4 @@ Stop staging on shared hardware once its window has ended (run by pinka-window-e
 pinka window expire [-h]
 ```
 
-Exit codes: 0 success; 1 failure (doctor: warnings only); 2 usage error (doctor: a check of severity error failed). See [Exit codes](../exit-codes.md).
+Exit codes: 0 success; 1 failure (doctor: warnings only); 2 usage error (doctor: a check of severity error failed); doctor: 3 an internal error. See [Exit codes](../exit-codes.md).

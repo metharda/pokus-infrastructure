@@ -160,7 +160,7 @@
               "minimum": 20
             }
           ],
-          "description": "Size of the loop file (source loop): auto (computed by preflight from the golden images, the concurrent targets' root disks and the free space), or whole GiB, at least 20."
+          "description": "Size of the loop file (source loop): auto (the sum preflight computes of everything that may be written to the Incus pool: the projects' disk limits, the image volumes, the thin pool's metadata and a headroom), or whole GiB, at least 20, which must hold that sum."
         },
         "device": {
           "type": "string",

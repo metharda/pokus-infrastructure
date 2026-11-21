@@ -24,6 +24,7 @@ import copy
 import json
 import math
 import os
+import shlex
 import shutil
 import sys
 from dataclasses import dataclass, field
@@ -33,15 +34,15 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 FIXTURES_DIR = os.path.join(HERE, "fixtures")
 GIB_KB = 1024 * 1024
 GIB = 1024**3
-# What a 30 GiB loop pool and the 50 GiB it leaves beside it need on one root
+# What a 200 GiB loop pool and the 50 GiB it leaves beside it need on one root
 # file system with the default images and golden images, GiB (the loop reserve
 # fixtures sit 0.01 GiB above and below it).
-LOOP_RESERVE_NEED = 94.6
+LOOP_RESERVE_NEED = 264.6
 # The same need exactly (the sum of the items' sizes as preflight adds them):
 # the disk boundary fixtures sit on it. When an estimate changes,
 # test_the_boundary_fixture_sits_on_the_byte (test_fixtures.py) fails; set
 # this to the new sum.
-LOOP_RESERVE_NEED_EXACT = 94.59900820637122
+LOOP_RESERVE_NEED_EXACT = 264.59900820637122
 NOW = "2026-10-05T09:12:44Z"
 ANY_V4 = "0.0.0.0"  # noqa: S104 - a recorded listening address, nothing binds
 EFI_SB = "/sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c"
@@ -387,6 +388,8 @@ def wsl2(conf: str | None = WSL_CONF_MANAGED, interop: str | None = None) -> Lay
         ):
             f.dirs.append(f"/sys/module/{m}")
         f.dirs.append("/usr/lib/wsl/lib")
+        # Microsoft's WSL kernel builds dm_thin_pool as a module: loadable.
+        f.cmd("modprobe -n dm_thin_pool", "")
         f.cmd("systemd-detect-virt", "wsl\n")
         f.cmd("systemd-detect-virt --vm", "none\n", rc=1)
         f.cmd("systemd-detect-virt --container", "wsl\n")
@@ -790,7 +793,7 @@ def active(unit: str) -> Layer:
     return apply
 
 
-def no_storage(f: Fixture) -> None:
+def no_dmthin(f: Fixture) -> None:
     """Neither btrfs nor dm_thin_pool."""
     f.files["/proc/filesystems"] = "".join(
         f"nodev\t{n}\n" for n in DEFAULT_FILESYSTEMS if n != "btrfs"
@@ -802,13 +805,51 @@ def no_storage(f: Fixture) -> None:
     )
 
 
+def existing_pool(size_gib: int) -> Layer:
+    """An Incus pool's loop file of ``size_gib`` that exists already, fully allocated.
+
+    Its volume group's thin pool holds the file less the metadata and its spare
+    (2 GiB) and LVM's overhead (1 GiB). The ``stat``, ``vgs`` and ``lvs``
+    answers are hand-written in those tools' formats, not recorded.
+    """
+    path = "/var/lib/incus/disks/pinka-targets.img"
+
+    def apply(f: Fixture) -> None:
+        f.files[path] = ""
+        # The directories now exist: df answers for them as for /var/lib (the
+        # disks layer comes first).
+        answer = f.commands["df --output=target,fstype,size,avail -B1 /var/lib"]
+        for where in ("/var/lib/incus", "/var/lib/incus/disks", path):
+            f.commands[f"df --output=target,fstype,size,avail -B1 {where}"] = dict(answer)
+        size = size_gib * GIB
+        f.cmd(shlex.join(["stat", "--format=%s %b %B", path]), f"{size} {size // 512} 512\n")
+        f.cmd("vgs --noheadings -o vg_name pinka-targets", "  pinka-targets\n")
+        f.cmd(
+            "lvs --noheadings --units b --nosuffix -o lv_size pinka-targets/IncusThinPool",
+            f"  {(size_gib - 3) * GIB}\n",
+        )
+
+    return apply
+
+
+def btrfs_no_dmthin(f: Fixture) -> None:
+    """btrfs present, dm_thin_pool missing: btrfs is not a pool driver."""
+    f.files["/proc/modules"] = "".join(
+        f"{m} 16384 0 - Live 0x0000000000000000\n" for m in LOADED_MODULES if m != "dm_thin_pool"
+    )
+
+
+def wsl_no_dmthin(f: Fixture) -> None:
+    """A WSL2 distribution that cannot load the WSL kernel's dm_thin_pool."""
+    f.cmd("modprobe -n dm_thin_pool", "modprobe: FATAL: Module dm_thin_pool not found\n", rc=1)
+
+
 # --------------------------------------------------------------------- fixtures
 
 FULL_FEATURES = {
     "gpu_inference": True,
     "vm_targets": True,
     "dcgm_metrics": True,
-    "btrfs_pool": True,
 }
 
 
@@ -1082,6 +1123,23 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             "features": {"gpu_inference": True, "vm_targets": False, "dcgm_metrics": False},
         },
     )
+    fx["ubuntu2404-wsl2-dmthin-loadable"] = build(
+        *base_ubuntu,
+        wsl2(),
+        expected={"provider": "wsl2", "storage_backend": "lvm", "needs_action": []},
+    )
+    fx["ubuntu2404-wsl2-no-dmthin"] = build(
+        *base_ubuntu,
+        wsl2(),
+        wsl_no_dmthin,
+        expected={
+            "outcome": "needs_action",
+            "provider": "wsl2",
+            "storage_backend": None,
+            "needs_action": ["lvm_thin_pool"],
+            "needs_action_contains": ["wsl --update"],
+        },
+    )
     fx["ubuntu2404-wsl2-gpu-kvm"] = build(
         *base_ubuntu,
         wsl2(),
@@ -1091,7 +1149,7 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             "outcome": "supported",
             "provider": "wsl2",
             "env_class": "wsl2",
-            "features": {"gpu_inference": True, "vm_targets": True, "btrfs_pool": True},
+            "features": {"gpu_inference": True, "vm_targets": True},
         },
     )
     # A driver whose CUDA version is below the pinned vLLM
@@ -1825,17 +1883,36 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
     )
     arm.data["machine"] = "aarch64"
     fx["ubuntu2404-aarch64-no-gpu"] = arm
-    fx["ubuntu2404-no-btrfs-no-dmthin"] = build(
+    no_dmthin_expected = {
+        "outcome": "needs_action",
+        "storage_backend": None,
+        "needs_action": ["lvm_thin_pool"],
+        "needs_action_contains": ["linux-modules-$(uname -r)"],
+    }
+    fx["ubuntu2404-no-dmthin"] = build(
         *base_ubuntu,
-        no_storage,
+        no_dmthin,
         baremetal(),
         kvm(),
         nvidia_pci("loaded"),
-        expected={
-            "outcome": "unsupported",
-            "storage_backend": None,
-            "unsupported_contains": ["No quota-capable storage"],
-        },
+        expected=no_dmthin_expected,
+    )
+    fx["ubuntu2404-inference-node-no-dmthin"] = build(
+        *base_ubuntu,
+        no_dmthin,
+        baremetal(),
+        kvm(),
+        nvidia_pci("loaded"),
+        plan={"node_role": "inference"},
+        expected={"storage_backend": None, "needs_action": []},
+    )
+    fx["ubuntu2404-btrfs-no-dmthin"] = build(
+        *base_ubuntu,
+        btrfs_no_dmthin,
+        baremetal(),
+        kvm(),
+        nvidia_pci("loaded"),
+        expected=no_dmthin_expected,
     )
     fx["ubuntu2404-cgroup-v1"] = build(
         *base_ubuntu,
@@ -2052,9 +2129,9 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             ],
         },
     )
-    # A 30 GiB loop pool leaves 50 GiB free beside it: with everything on one
+    # A 200 GiB loop pool leaves 50 GiB free beside it: with everything on one
     # file system, LOOP_RESERVE_NEED GiB at install; 0.01 GiB above it fits,
-    # 0.01 GiB below it is refused, the shortfall on the reserve (the largest
+    # 0.01 GiB below it is refused, the shortfall on the file (the largest
     # item).
     for name, free, expected in (
         ("above", LOOP_RESERVE_NEED + 0.01, {"outcome": "degraded"}),
@@ -2064,8 +2141,7 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             {
                 "outcome": "unsupported",
                 "unsupported_contains": [
-                    "the free space kept beside the Incus pool (loop file): 50.0 GiB, "
-                    "missing 0.1 GiB on /"
+                    "the Incus pool (loop file): 200.0 GiB, missing 0.1 GiB on /"
                 ],
             },
         ),
@@ -2077,7 +2153,7 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             apparmor,
             baremetal(),
             kvm(),
-            plan={"pool": {"source": "loop", "size_gib": 30}},
+            plan={"pool": {"source": "loop", "size_gib": 200}},
             expected=expected,
         )
     # The disk comparison is exact: 0.001 GiB short (below the 0.005 GiB that
@@ -2093,9 +2169,8 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
                 "outcome": "unsupported",
                 "disk": {"/": "does_not_fit"},
                 "unsupported_contains": [
-                    "disk: / has 94.5 GiB free and these choices need 94.6 GiB there: ",
-                    "the free space kept beside the Incus pool (loop file): 50.0 GiB, "
-                    "missing 0.1 GiB on /",
+                    "disk: / has 264.5 GiB free and these choices need 264.6 GiB there: ",
+                    "the Incus pool (loop file): 200.0 GiB, missing 0.1 GiB on /",
                 ],
             },
         ),
@@ -2117,40 +2192,59 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             apparmor,
             baremetal(),
             kvm(),
-            plan={"pool": {"source": "loop", "size_gib": 30}},
+            plan={"pool": {"source": "loop", "size_gib": 200}},
             expected=wanted,
         )
-    # incus_pool_size: auto on one file system: the golden images and two
-    # VM targets with their probe clients, + 50 %, is 66 GiB with 386 GiB free;
-    # the space left after pinka's other needs (14.6 GiB at install, the 50 GiB
-    # the loop file leaves beside it, 15.3 GiB of stores at their retention)
-    # makes it 64 GiB with 144 GiB free, and with 60 GiB free sets the 30 GiB
-    # floor, which does not fit with the 50 GiB beside it.
-    pool_auto = {"disabled": ["gpu_inference", "gpu_training"]}
-    for free, size, outcome in (
-        (144, 64, {"outcome": "degraded"}),
-        (386, 66, {"outcome": "degraded"}),
-        (
-            60,
-            30,
-            {
-                "outcome": "unsupported",
-                "unsupported_contains": [
-                    "the free space kept beside the Incus pool (loop file): 50.0 GiB, "
-                    "missing 34.6 GiB on /"
-                ],
-            },
-        ),
-    ):
-        fx[f"ubuntu2404-pool-auto-{free}"] = build(
-            UBUNTU_2404,
-            system(),
-            disks(root_free=free),
-            apparmor,
-            baremetal(),
-            kvm(),
-            expected={**outcome, **pool_auto, "pool": {"size_gib": size, "basis": "computed"}},
-        )
+    # The Incus pool: the sum of everything that may be written to it. With the
+    # defaults on this host (VM targets, three researchers, six golden images):
+    # 40.98 + 32.98 + 60 + 24 + 2 + 1 + 20 = 181 GiB (180.96 before rounding up).
+    pool_host = [UBUNTU_2404, system(), apparmor, baremetal(), kvm()]
+    no_gpu = {"disabled": ["gpu_inference", "gpu_training"]}
+    fx["ubuntu2404-pool-too-small"] = build(
+        *pool_host,
+        disks(root_free=400),
+        plan={"pool": {"source": "loop", "size_gib": 100}},
+        expected={
+            "outcome": "needs_action",
+            "needs_action": ["incus_pool_size"],
+            "needs_action_contains": [
+                "The Incus pool's incus_pool_size (100.0 GiB) is smaller than the sum",
+                "missing 81.0 GiB",
+                "set incus_pool_size to auto or at least 181GiB",
+                "or lower the limits",
+            ],
+        },
+    )
+    fx["ubuntu2404-pool-auto-3-researchers"] = build(
+        *pool_host,
+        disks(root_free=400),
+        plan={"researchers": 3},
+        expected={"outcome": "degraded", **no_gpu, "pool": {"size_gib": 181, "basis": "computed"}},
+    )
+    fx["ubuntu2404-pool-auto-no-room"] = build(
+        *pool_host,
+        disks(root_free=200),
+        expected={
+            "outcome": "unsupported",
+            "pool": {"size_gib": 181, "basis": "computed"},
+            "unsupported_contains": ["the Incus pool (loop file): 181.0 GiB, missing"],
+        },
+    )
+    fx["ubuntu2404-pool-existing-smaller"] = build(
+        *pool_host,
+        disks(root_free=400),
+        existing_pool(100),
+        expected={
+            "outcome": "needs_action",
+            "needs_action": ["incus_pool_size"],
+            "needs_action_contains": [
+                "The existing Incus pool's thin pool (97.0 GiB of data) is smaller than",
+                "missing 81.0 GiB",
+                "incus storage set pinka-targets size=181GiB', larger than its current size",
+                "or lower the limits",
+            ],
+        },
+    )
     # Components that existed before pinka
     # are used as they are; preflight stops where the lab could not run with
     # them unchanged.

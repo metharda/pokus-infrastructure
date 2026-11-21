@@ -97,8 +97,7 @@ LAB: dict[str, Any] = {
     },
     "incus": {
         "pool": "pinka-targets",
-        "backend": "btrfs",
-        "min_free_gib": 20,
+        "backend": "lvm",
         "run_acl": "pinka-run-default",
         "events_unit": "pinka-incus-events.service",
         "projects": ["bench", "build"],

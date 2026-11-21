@@ -10,13 +10,21 @@ from collections.abc import Sequence
 from pinka_lab import __version__, commands, fingerprint
 from pinka_lab.checks import CHECKS
 from pinka_lab.config import DEFAULT_PATH, ConfigError, LabConfig, load
-from pinka_lab.doctor import EXIT_FAILURES, Context, exit_code, render_json, render_text, run_checks
+from pinka_lab.doctor import (
+    EXIT_FAILURES,
+    EXIT_INTERNAL,
+    Context,
+    exit_code,
+    render_json,
+    render_text,
+    run_checks,
+)
 from pinka_lab.smoke import smoke_checks
 from pinka_lab.system import RealSystem, System
 
 EPILOG = (
     "Exit codes: 0 success; 1 failure (doctor: warnings only); 2 usage error "
-    "(doctor: a check of severity error failed)."
+    "(doctor: a check of severity error failed); doctor: 3 an internal error."
 )
 
 
@@ -55,6 +63,16 @@ def build_parser() -> argparse.ArgumentParser:  # noqa: PLR0915 - one parser per
     doctor.add_argument("--json", action="store_true", help="print the report as JSON")
     doctor.add_argument(
         "--smoke", action="store_true", help="also launch a throwaway target of every golden image"
+    )
+    doctor.add_argument(
+        "--only",
+        metavar="IDS",
+        help="run only these checks, comma-separated IDs (the periodic run's)",
+    )
+    doctor.add_argument(
+        "--report",
+        metavar="PATH",
+        help="also write the JSON report to PATH, replaced atomically (root only)",
     )
 
     sub.add_parser(
@@ -288,7 +306,15 @@ def add_docs_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     )
 
 
-def run_doctor(system: System, config: LabConfig, as_json: bool, smoke: bool) -> int:
+def run_doctor(
+    system: System,
+    config: LabConfig,
+    as_json: bool,
+    smoke: bool,
+    *,
+    only: str | None = None,
+    report: str | None = None,
+) -> int:
     """Run doctor (root only).
 
     Args:
@@ -296,19 +322,34 @@ def run_doctor(system: System, config: LabConfig, as_json: bool, smoke: bool) ->
         config: The lab description.
         as_json: Print JSON.
         smoke: Add the smoke checks.
+        only: Comma-separated check IDs to run alone (unknown IDs are refused).
+        report: A path the JSON report is also written to, replaced atomically.
 
     Returns:
-        Doctor's exit code.
+        Doctor's exit code (2 also for a usage error, as before).
     """
     if system.euid() != 0:
         sys.stderr.write("doctor needs root (sudo pinka doctor)\n")
         return EXIT_FAILURES
     checks = list(CHECKS)
+    if only is not None:
+        wanted = [i.strip() for i in only.split(",") if i.strip()]
+        known = {c.id for c in checks}
+        unknown = [i for i in wanted if i not in known]
+        if not wanted:
+            sys.stderr.write("pinka: doctor --only: no check IDs given\n")
+            return EXIT_FAILURES
+        if unknown:
+            sys.stderr.write(f"pinka: doctor --only: unknown check IDs: {', '.join(unknown)}\n")
+            return EXIT_FAILURES
+        checks = [c for c in checks if c.id in wanted]
     if smoke:
         checks += smoke_checks(list(config.get("images", "blueprints", default=[])))
     findings = run_checks(checks, Context(system, config))
+    checked_at = system.now().strftime("%Y-%m-%dT%H:%M:%SZ")
+    if report is not None:
+        system.write_text(report, render_json(findings, config.machine, checked_at), 0o600)
     if as_json:
-        checked_at = system.now().strftime("%Y-%m-%dT%H:%M:%SZ")
         sys.stdout.write(render_json(findings, config.machine, checked_at))
     else:
         sys.stdout.write(render_text(findings))
@@ -352,7 +393,7 @@ def dispatch(args: argparse.Namespace, system: System, config: LabConfig) -> int
     if args.command == "preflight":
         return commands.preflight(system, config, args.json, args.plan)
     if args.command == "doctor":
-        return run_doctor(system, config, args.json, args.smoke)
+        return run_doctor(system, config, args.json, args.smoke, only=args.only, report=args.report)
     if args.command == "fingerprint":
         return run_fingerprint(system, config, args.json)
     if args.command == "gpu":
@@ -405,7 +446,7 @@ def dispatch(args: argparse.Namespace, system: System, config: LabConfig) -> int
     return commands.user_keys(system, config, args.name, args.key_file)
 
 
-def main(argv: Sequence[str], system: System | None = None) -> int:
+def main(argv: Sequence[str], system: System | None = None) -> int:  # noqa: PLR0911 - one return per command family
     """Entry point.
 
     Args:
@@ -442,3 +483,9 @@ def main(argv: Sequence[str], system: System | None = None) -> int:
     except (ConfigError, commands.CommandError) as exc:
         sys.stderr.write(f"pinka: {exc}\n")
         return EXIT_FAILURES if args.command == "doctor" else 1
+    except Exception as exc:
+        if args.command != "doctor":
+            raise
+        # Doctor's own failure is never a pass, nor a doctor result (0, 1, 2).
+        sys.stderr.write(f"pinka: doctor failed: {type(exc).__name__}: {exc}\n")
+        return EXIT_INTERNAL

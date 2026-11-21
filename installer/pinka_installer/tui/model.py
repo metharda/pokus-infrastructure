@@ -277,7 +277,7 @@ class Wizard:
 
     @property
     def storage_backend(self) -> str:
-        """btrfs, lvm or empty, from preflight."""
+        """The Incus pool's driver from preflight: lvm, or empty without dm_thin_pool."""
         return str(self.profile.get("storage_backend") or "")
 
     # --- what bootstrap needs -------------------------------------------------------
